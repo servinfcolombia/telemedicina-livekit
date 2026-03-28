@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: livekit-allow
+  namespace: telemedicina
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: livekit
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-controller
+      ports:
+        - protocol: TCP
+          port: 7880
+        - protocol: TCP
+          port: 7881
+        - protocol: UDP
+          port: 7882
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 7880
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379

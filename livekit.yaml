@@ -1,0 +1,40 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+  port_range_start: 50000
+  port_range_end: 60000
+  
+  video:
+    codecs:
+      - mime: video/VP9
+        fmtp: "profile-id=0"
+        max_bitrate: 1500000
+        enable_simulcast: true
+      - mime: video/H264
+        fmtp: "profile-level-id=42e01f;level-asymmetry-allowed=1"
+        max_bitrate: 2000000
+        enable_simulcast: true
+  
+  audio:
+    codecs:
+      - mime: audio/opus
+        fmtp: "minptime=10;useinbandfec=1"
+        max_bitrate: 64000
+
+room:
+  auto_create: false
+  max_participants: 4
+  empty_timeout: 300
+  max_room_size: 4
+
+keys:
+  devkey: "secret"
+
+auth:
+  token_ttl: 900
+
+logging:
+  level: info
+  pion_level: warn

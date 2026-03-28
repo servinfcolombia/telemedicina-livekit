@@ -1,0 +1,71 @@
+replicaCount: 1
+
+image:
+  repository: livekit/livekit-server
+  pullPolicy: IfNotPresent
+  tag: latest
+
+service:
+  type: ClusterIP
+  ports:
+    http: 7880
+    rtc: 7881
+    udp: 7882
+    ws: 7888
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.frontend.rule.type: PathPrefix
+  hosts:
+    - host: livekit.tudominio.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: livekit-tls
+      hosts:
+        - livekit.tudominio.com
+
+config:
+  port: 7880
+  rtc:
+    tcpPort: 7881
+    udpPort: 7882
+    useExternalIp: true
+  keys:
+    devkey: "changeme-secret"
+  room:
+    autoCreate: false
+    maxParticipants: 4
+  logging:
+    level: info
+
+persistence:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000

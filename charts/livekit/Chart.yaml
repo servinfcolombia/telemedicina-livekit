@@ -1,0 +1,12 @@
+apiVersion: v2
+name: livekit
+description: LiveKit Server Helm Chart for Telemedicina
+type: application
+version: 1.0.0
+appVersion: "latest"
+keywords:
+  - livekit
+  - webrtc
+  - telemedicine
+maintainers:
+  - name: Telemedicina Team
