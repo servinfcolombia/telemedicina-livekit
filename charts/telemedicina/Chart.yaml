@@ -1,0 +1,40 @@
+apiVersion: v2
+name: telemedicina
+description: Complete Telemedicine Platform Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - telemedicine
+  - livekit
+  - healthcare
+  - fhir
+maintainers:
+  - name: Telemedicina Team
+    email: team@telemedicina.com
+
+dependencies:
+  - name: livekit
+    version: "1.0.0"
+    repository: "file://../livekit"
+    condition: livekit.enabled
+  - name: backend
+    version: "1.0.0"
+    repository: "file://../backend"
+    condition: backend.enabled
+  - name: frontend
+    version: "1.0.0"
+    repository: "file://../frontend"
+    condition: frontend.enabled
+  - name: postgres
+    version: "15.1.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgres.enabled
+  - name: redis
+    version: "17.15.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: minio
+    version: "14.1.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: minio.enabled

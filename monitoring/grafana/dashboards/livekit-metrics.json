@@ -1,0 +1,66 @@
+{
+  "dashboard": {
+    "title": "Telemedicina LiveKit Metrics",
+    "tags": ["telemedicine", "livekit"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Rooms",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "livekit_room_participants",
+            "legendFormat": "Active Rooms"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Total Participants",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(livekit_room_participants)",
+            "legendFormat": "Participants"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Network Quality",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(livekit_participant_quality[5m])",
+            "legendFormat": "Quality"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Bytes Transferred",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(livekit_ingress_bytes_total[5m])",
+            "legendFormat": "Ingress"
+          },
+          {
+            "expr": "rate(livekit_egress_bytes_total[5m])",
+            "legendFormat": "Egress"
+          }
+        ]
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

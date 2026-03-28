@@ -1,0 +1,108 @@
+global:
+  namespace: telemedicina
+  domain: telemedicina.com
+
+livekit:
+  enabled: true
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+backend:
+  enabled: true
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+postgres:
+  enabled: true
+  auth:
+    username: telemedicina
+    database: telemedicina
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+  metrics:
+    enabled: true
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  architecture: standalone
+  persistence:
+    enabled: true
+    size: 5Gi
+
+minio:
+  enabled: true
+  auth:
+    rootUser: minioadmin
+    rootPassword: changeme
+  persistence:
+    enabled: true
+    size: 20Gi
+  api:
+    enabled: true
+  console:
+    enabled: true
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.frontend.rule.type: PathPrefix
+  hosts:
+    - host: api.telemedicina.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: app.telemedicina.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+
+networkPolicies:
+  enabled: true
+
+podSecurityPolicy:
+  enabled: true
