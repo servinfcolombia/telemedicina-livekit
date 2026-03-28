@@ -1,0 +1,167 @@
+# Configuración Óptima de LiveKit para Telemedicina
+# Versión: 1.0 | Objetivo: Máxima calidad con mínimo ancho de banda
+
+## PARÁMETROS DE SERVIDOR (livekit-server.yaml)
+
+```yaml
+# Configuración base para producción en telemedicina
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+  
+  # Codecs priorizados para eficiencia clínica
+  video:
+    codecs:
+      - mime: video/VP9
+        fmtp: "profile-id=0"
+        max_bitrate: 1500000
+        enable_simulcast: true
+      - mime: video/H264
+        fmtp: "profile-level-id=42e01f;level-asymmetry-allowed=1"
+        max_bitrate: 2000000
+        enable_simulcast: true
+    
+    dynacast: true
+    dynacast_pause_threshold: 0.05
+    
+  audio:
+    codecs:
+      - mime: audio/opus
+        fmtp: "minptime=10;useinbandfec=1;sprop-stereo=0"
+        max_bitrate: 64000
+    audio_level_interval: 100
+    active_speaker_threshold: 0.4
+
+  bandwidth_estimate:
+    enabled: true
+    initial_estimate: 800000
+    min_estimate: 200000
+    max_estimate: 2500000
+    congestion_control: "gcc"
+
+room:
+  auto_create: false
+  max_participants: 4
+  
+recording:
+  output:
+    s3:
+      access_key: "${MINIO_ACCESS_KEY}"
+      secret_key: "${MINIO_SECRET_KEY}"
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: "${RECORDINGS_BUCKET}"
+    
+    video:
+      codec: vp9
+      width: 1280
+      height: 720
+      fps: 15
+      bitrate: 1000000
+    audio:
+      codec: opus
+      sample_rate: 48000
+      channels: 1
+      bitrate: 48000
+    
+    split_audio: true
+    audio_only_output: true
+
+keys:
+  dev-key: "${LIVEKIT_API_SECRET}"
+  
+auth:
+  token_ttl: 900
+  
+  permissions:
+    doctor:
+      canPublish: true
+      canSubscribe: true
+      canPublishData: true
+      hidden: false
+      recorder: false
+    patient:
+      canPublish: true
+      canSubscribe: true
+      canPublishData: false
+      hidden: false
+      recorder: false
+    observer:
+      canPublish: false
+      canSubscribe: true
+      canPublishData: false
+      hidden: true
+      recorder: false
+
+logging:
+  level: "info"
+  json: true
+  fields:
+    - "room"
+    - "participant"
+    - "event"
+    - "timestamp"
+    - "ip"
+  redact_fields:
+    - "transcription"
+    - "medical_notes"
+    - "patient_name"
+
+prometheus:
+  enabled: true
+  port: 9090
+```
+
+## VARIABLES DE ENTORNO REQUERIDAS
+
+```bash
+# .env.example para LiveKit deployment
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=changeme-please-use-secure-random-string
+
+# MinIO/S3 para grabaciones
+MINIO_ENDPOINT=https://minio.tudominio.com
+MINIO_ACCESS_KEY=your-access-key
+MINIO_SECRET_KEY=your-secret-key
+RECORDINGS_BUCKET=telemedicina-recordings
+RECORDINGS_RETENTION_DAYS=2190
+
+# Configuración de red
+EXTERNAL_IP=your.server.public.ip
+TURN_SERVER_URL=turn:turn.tudominio.com:3478
+TURN_USERNAME=telemedicina
+TURN_CREDENTIAL=secure-turn-password
+
+# SSL/TLS
+SSL_CERT_PATH=/etc/ssl/certs/livekit.crt
+SSL_KEY_PATH=/etc/ssl/private/livekit.key
+
+# Logging y auditoría
+LOG_LEVEL=info
+AUDIT_LOG_PATH=/var/log/livekit/audit.jsonl
+HIPAA_COMPLIANCE_MODE=true
+```
+
+## COMANDOS DE VALIDACIÓN POST-CONFIGURACIÓN
+
+```bash
+# 1. Validar sintaxis del YAML de configuración
+$ yamllint livekit-server.yaml
+
+# 2. Probar conectividad WebRTC con cliente de prueba
+$ livekit-cli test --server wss://livekit.tudominio.com --token $TEST_TOKEN
+
+# 3. Verificar métricas de Prometheus
+$ curl -s http://localhost:9090/metrics | grep livekit_ | head -20
+
+# 4. Validar configuración de grabación con archivo de prueba
+$ livekit-cli ingress create --input test-video.mp4 --output s3://bucket/test
+
+# 5. Prueba de carga simulada (10 salas concurrentes)
+$ for i in {1..10}; do 
+    livekit-cli room create --name "load-test-$i" & 
+  done
+$ livekit-cli list rooms
+$ livekit-cli room delete --name "load-test-*"
+```

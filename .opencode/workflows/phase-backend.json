@@ -1,0 +1,123 @@
+{
+  "id": "phase-2-backend",
+  "name": "Backend API - FastAPI + FHIR + Webhooks",
+  "description": "Desarrollo de la capa de negocio: autenticación, integración FHIR, orquestación de IA",
+  "version": "1.0",
+  
+  "agent": "@backend-api",
+  "timeout_minutes": 60,
+  
+  "prerequisites": [
+    "Fase 1 (infra) completada y validada",
+    "OpenEMR FHIR API accesible con credenciales OAuth2",
+    "LiveKit server corriendo y accesible vía WebSocket"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-2.1",
+      "name": "Estructurar proyecto FastAPI con routers modulares",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/main.py",
+        "backend/src/routers/{auth,consultations,fhir,webhooks,ia}.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -m py_compile src/main.py",
+        "expected_exit_code": 0,
+        "description": "Código Python compila sin errores"
+      }
+    },
+    {
+      "id": "task-2.2",
+      "name": "Implementar autenticación OAuth2 + JWT con RBAC",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "backend/src/services/auth.py",
+        "backend/src/models/user.py",
+        "backend/tests/test_auth.py"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/test_auth.py -v",
+        "expected_exit_code": 0,
+        "description": "Tests de autenticación pasan"
+      }
+    },
+    {
+      "id": "task-2.3",
+      "name": "Crear handler de webhooks para eventos de LiveKit",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "backend/src/routers/webhooks.py",
+        "backend/src/services/livekit_client.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -m py_compile src/routers/webhooks.py",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-2.4",
+      "name": "Integrar cliente FHIR para OpenEMR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/services/fhir_client.py",
+        "backend/src/models/fhir_resources.py"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/test_fhir.py -v",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-2.5",
+      "name": "Configurar SQLAlchemy + PostgreSQL con modelos clínicos",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "backend/src/models/database.py",
+        "backend/alembic/"
+      ],
+      "validation": {
+        "command": "cd backend && python -c 'from src.models.database import Base; print(\"OK\")'",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-2.6",
+      "name": "Generar documentación OpenAPI/Swagger automática",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/openapi.json"
+      ],
+      "validation": {
+        "command": "curl -s http://localhost:8000/openapi.json | python -m json.tool > /dev/null",
+        "expected_exit_code": 0
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Backend API funcional con autenticación y FHIR",
+    "validations": [
+      {
+        "name": "Tests pasan con coverage ≥90%",
+        "command": "cd backend && pytest tests/ --cov=src --cov-report=term",
+        "expected_output_contains": "90"
+      },
+      {
+        "name": "Endpoint FHIR Patient accesible",
+        "command": "curl -H 'Authorization: Bearer $TOKEN' http://localhost:8000/fhir/Patient",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Swagger UI disponible",
+        "command": "curl -sf http://localhost:8000/docs",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "next_phase": "phase-3-frontend",
+  
+  "rollback_instructions": "git checkout backend/ && docker compose restart"
+}

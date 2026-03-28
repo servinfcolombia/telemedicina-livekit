@@ -1,0 +1,105 @@
+{
+  "id": "phase-4-ai",
+  "name": "Pipeline de IA - Whisper + Extracción FHIR",
+  "description": "Configuración del pipeline de IA: transcripción, extracción clínica, procesamiento asíncrono",
+  "version": "1.0",
+  
+  "agent": "@ai-pipeline",
+  "timeout_minutes": 45,
+  
+  "prerequisites": [
+    "Fase 3 (frontend) completada y validada",
+    "LiveKit Agents instalado y configurado",
+    "Redis disponible para colas asíncronas"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-4.1",
+      "name": "Configurar Whisper.cpp para transcripción local",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/worker.py",
+        "agents/whisper_config.py"
+      ],
+      "validation": {
+        "command": "python -c 'from agents.worker import WhisperWorker; print(\"OK\")'",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-4.2",
+      "name": "Diseñar prompt para extracción de entidades FHIR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        ".opencode/prompts/fhir-extraction.txt"
+      ],
+      "validation": {
+        "command": "test -f .opencode/prompts/fhir-extraction.txt",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-4.3",
+      "name": "Implementar mapeo: salida LLM → recursos FHIR válidos",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/services/fhir_mapper.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -m pytest tests/ai/test_fhir_mapper.py -v",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-4.4",
+      "name": "Configurar cola asíncrona (Redis) para procesamiento",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "backend/src/queue/redis_config.py",
+        "backend/src/queue/tasks.py"
+      ],
+      "validation": {
+        "command": "python -c 'from backend.src.queue.redis_config import get_redis; print(\"OK\")'",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-4.5",
+      "name": "Crear dashboard de revisión médica",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "frontend/src/components/ai/ReviewDashboard.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npx tsc --noEmit src/components/ai/ReviewDashboard.tsx",
+        "expected_exit_code": 0
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Pipeline de IA funcional para transcripción y extracción FHIR",
+    "validations": [
+      {
+        "name": "Precisión STT ≥95% en dataset de prueba",
+        "command": "python -m pytest tests/ai/test_whisper.py --cov=agents",
+        "expected_output_contains": "95"
+      },
+      {
+        "name": "FHIR output válido",
+        "command": "python scripts/validate_fhir.py output.json",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Dashboard de revisión accesible",
+        "command": "curl -sf http://localhost:3000/ai/review",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "next_phase": "phase-5-security",
+  
+  "rollback_instructions": "git checkout agents/ backend/src/services/fhir_mapper.py"
+}

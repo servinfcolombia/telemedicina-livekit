@@ -1,0 +1,109 @@
+{
+  "name": "telemedicina-full-deployment",
+  "description": "Ejecuta las 7 fases del proyecto de telemedicina en secuencia",
+  "version": "1.0",
+  
+  "phases": [
+    {
+      "id": "phase-0-prep",
+      "name": "Preparación",
+      "agent": "@plan",
+      "tasks": [
+        "Inicializar repositorio con estructura monorepo",
+        "Configurar OpenCode con provider LLM",
+        "Definir user stories en formato FHIR",
+        "Validar entorno de desarrollo Docker local"
+      ],
+      "exit_criteria": "README.md actualizado con estructura del proyecto",
+      "next": "phase-1-infra"
+    },
+    {
+      "id": "phase-1-infra",
+      "name": "Infraestructura Base",
+      "agent": "@infra-setup",
+      "workflow_file": ".opencode/workflows/phase-infra.json",
+      "tasks": [
+        "Desplegar LiveKit + CoTurn + MinIO + PostgreSQL vía Docker Compose",
+        "Configurar Helm charts para Kubernetes",
+        "Establecer SSL automático con Caddy",
+        "Validar conectividad WebRTC"
+      ],
+      "exit_criteria": "kubectl get pods -n telemedicina muestra todos Running",
+      "next": "phase-2-backend"
+    },
+    {
+      "id": "phase-2-backend",
+      "name": "Backend + API",
+      "agent": "@backend-api",
+      "workflow_file": ".opencode/workflows/phase-backend.json",
+      "tasks": [
+        "Implementar autenticación OAuth2 + JWT",
+        "Crear webhooks handler para LiveKit",
+        "Integrar cliente FHIR para OpenEMR",
+        "Generar documentación OpenAPI"
+      ],
+      "exit_criteria": "pytest tests/ --cov=src reporta coverage ≥90%",
+      "next": "phase-3-frontend"
+    },
+    {
+      "id": "phase-3-frontend",
+      "name": "Frontend UI/UX",
+      "agent": "@frontend-ui",
+      "workflow_file": ".opencode/workflows/phase-frontend.json",
+      "tasks": [
+        "Desarrollar componentes de video con LiveKit SDK",
+        "Implementar dashboard médico y portal paciente",
+        "Garantizar accesibilidad WCAG 2.1 AA",
+        "Optimizar performance y bundle size"
+      ],
+      "exit_criteria": "npx axe http://localhost:3000 reporta 0 violaciones WCAG AA",
+      "next": "phase-4-ai"
+    },
+    {
+      "id": "phase-4-ai",
+      "name": "Pipeline de IA",
+      "agent": "@ai-pipeline",
+      "workflow_file": ".opencode/workflows/phase-ia.json",
+      "tasks": [
+        "Configurar Whisper.cpp para transcripción local",
+        "Diseñar prompt para extracción de entidades FHIR",
+        "Implementar cola asíncrona para procesamiento",
+        "Crear dashboard de revisión médica"
+      ],
+      "exit_criteria": "Precisión STT ≥95% en dataset de prueba médico",
+      "next": "phase-5-security"
+    },
+    {
+      "id": "phase-5-security",
+      "name": "Auditoría de Seguridad",
+      "agent": "@security-audit",
+      "tasks": [
+        "Validar cifrado en tránsito y reposo",
+        "Auditar controles de acceso y RBAC",
+        "Verificar logs de auditoría HIPAA",
+        "Validar accesibilidad WCAG"
+      ],
+      "exit_criteria": "./scripts/hipaa-check.sh reporta 0 críticas",
+      "next": "phase-6-deploy"
+    },
+    {
+      "id": "phase-6-deploy",
+      "name": "Despliegue y Documentación",
+      "agent": "@build",
+      "tasks": [
+        "Generar Helm chart para producción",
+        "Crear documentación técnica y de usuario",
+        "Configurar monitoreo con Prometheus+Grafana",
+        "Ejecutar pruebas de carga y aceptación"
+      ],
+      "exit_criteria": "Pruebas de carga: 50 consultas simultáneas sin degradación",
+      "next": null
+    }
+  ],
+  
+  "global_settings": {
+    "rollback_on_failure": true,
+    "notify_on_phase_complete": true,
+    "require_manual_approval_before": ["phase-5-security", "phase-6-deploy"]
+  }
+}

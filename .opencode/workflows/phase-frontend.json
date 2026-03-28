@@ -1,0 +1,125 @@
+{
+  "id": "phase-3-frontend",
+  "name": "Frontend UI/UX - Next.js + LiveKit",
+  "description": "Desarrollo de la interfaz de usuario: videoconsultas, dashboard, accesibilidad",
+  "version": "1.0",
+  
+  "agent": "@frontend-ui",
+  "timeout_minutes": 60,
+  
+  "prerequisites": [
+    "Fase 2 (backend) completada y validada",
+    "API backend corriendo en localhost:8000",
+    "LiveKit server accesible"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-3.1",
+      "name": "Inicializar Next.js 14 con App Router + TypeScript + Tailwind",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "frontend/package.json",
+        "frontend/tsconfig.json",
+        "frontend/tailwind.config.js",
+        "frontend/next.config.js"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run build",
+        "expected_exit_code": 0,
+        "description": "Next.js compila sin errores"
+      }
+    },
+    {
+      "id": "task-3.2",
+      "name": "Integrar LiveKit Client SDK con componentes de video",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "frontend/src/components/video/VideoRoom.tsx",
+        "frontend/src/components/video/ParticipantTile.tsx",
+        "frontend/src/components/video/Controls.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npx tsc --noEmit",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-3.3",
+      "name": "Crear componentes de consulta: Scheduler, History, Consent",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "frontend/src/components/consultation/Scheduler.tsx",
+        "frontend/src/components/consultation/History.tsx",
+        "frontend/src/components/consultation/Consent.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run lint",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-3.4",
+      "name": "Implementar autenticación con NextAuth.js + JWT",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "frontend/src/lib/auth.ts",
+        "frontend/src/app/api/auth/[...nextauth]/route.ts"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run build",
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "task-3.5",
+      "name": "Garantizar accesibilidad WCAG 2.1 AA",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "frontend/src/components/**/*.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npx axe http://localhost:3000 --standard wcag2aa",
+        "expected_exit_code": 0,
+        "description": "0 violaciones WCAG AA"
+      }
+    },
+    {
+      "id": "task-3.6",
+      "name": "Optimizar performance: bundle <500KB, LCP <2.5s",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "frontend/next.config.js"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run build 2>&1 | grep 'Total bundle size'",
+        "expected_output_contains": "<500"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Frontend funcional con videoconsultas y accesibilidad",
+    "validations": [
+      {
+        "name": "Build exitoso sin errores",
+        "command": "cd frontend && npm run build",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Tests e2e pasan",
+        "command": "cd frontend && npm run test:e2e",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "0 violaciones WCAG AA",
+        "command": "cd frontend && npx axe http://localhost:3000 --standard wcag2aa --exit",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "next_phase": "phase-4-ai",
+  
+  "rollback_instructions": "git checkout frontend/"
+}

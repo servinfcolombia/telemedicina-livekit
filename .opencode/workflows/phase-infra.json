@@ -1,0 +1,157 @@
+{
+  "id": "phase-1-infra",
+  "name": "Infraestructura Base - LiveKit + Servicios",
+  "description": "Despliegue de la capa de comunicación WebRTC y servicios de soporte",
+  "version": "1.0",
+  
+  "agent": "@infra-setup",
+  "timeout_minutes": 45,
+  
+  "prerequisites": [
+    "Docker Desktop o K3d instalado y corriendo",
+    "kubectl configurado con contexto válido",
+    "Dominio DNS apuntando al servidor (A/AAAA records)",
+    "Certificados SSL disponibles o ACME configurado"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-1.1",
+      "name": "Generar docker-compose.yml para desarrollo local",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "docker-compose.yml",
+        "docker-compose.override.yml",
+        ".env.example"
+      ],
+      "validation": {
+        "command": "docker compose config --quiet",
+        "expected_exit_code": 0,
+        "description": "docker-compose.yml es sintácticamente válido"
+      }
+    },
+    {
+      "id": "task-1.2",
+      "name": "Configurar Helm chart para Kubernetes",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "charts/livekit/Chart.yaml",
+        "charts/livekit/values.yaml"
+      ],
+      "validation": {
+        "command": "helm lint charts/livekit",
+        "expected_exit_code": 0,
+        "description": "Helm chart pasa validación de sintaxis"
+      }
+    },
+    {
+      "id": "task-1.3",
+      "name": "Configurar Caddy/Traefik con SSL automático",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "caddy/Caddyfile",
+        "k8s/ingress.yaml"
+      ],
+      "validation": {
+        "command": "curl -sI https://localhost:443 | grep -i tls",
+        "expected_output_contains": "TLSv1.3",
+        "description": "HTTPS responde con TLS 1.3"
+      }
+    },
+    {
+      "id": "task-1.4",
+      "name": "Configurar CoTurn para NAT traversal",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "turnserver.conf",
+        "k8s/turn-deployment.yaml"
+      ],
+      "validation": {
+        "command": "./scripts/test-turn.sh",
+        "expected_exit_code": 0,
+        "description": "Servidor TURN responde a pruebas de conectividad"
+      }
+    },
+    {
+      "id": "task-1.5",
+      "name": "Configurar MinIO para almacenamiento de grabaciones",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "minio/init-buckets.sh",
+        "k8s/minio-statefulset.yaml"
+      ],
+      "validation": {
+        "command": "aws --endpoint-url http://localhost:9000 s3 ls",
+        "expected_output_contains": "telemedicina-recordings",
+        "description": "Bucket de grabaciones creado y accesible"
+      }
+    },
+    {
+      "id": "task-1.6",
+      "name": "Configurar PostgreSQL con cifrado y backups",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "postgres/postgresql.conf",
+        "scripts/backup-postgres.sh"
+      ],
+      "validation": {
+        "command": "kubectl exec -n telemedicina deploy/postgres -- psql -U postgres -c \"SHOW ssl;\"",
+        "expected_output_contains": "on",
+        "description": "PostgreSQL tiene SSL habilitado"
+      }
+    },
+    {
+      "id": "task-1.7",
+      "name": "Configurar políticas de red Kubernetes",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "k8s/network-policies/default-deny.yaml",
+        "k8s/network-policies/livekit-allow.yaml"
+      ],
+      "validation": {
+        "command": "kubectl get networkpolicy -n telemedicina | wc -l",
+        "expected_min_count": 3,
+        "description": "Al menos 3 NetworkPolicies creadas"
+      }
+    },
+    {
+      "id": "task-1.8",
+      "name": "Configurar monitoreo con Prometheus + Grafana",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "monitoring/prometheus-values.yaml",
+        "monitoring/grafana-dashboards/livekit-metrics.json"
+      ],
+      "validation": {
+        "command": "curl -s http://localhost:9090/metrics | grep livekit_ | wc -l",
+        "expected_min_count": 10,
+        "description": "Métricas de LiveKit expuestas en Prometheus"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Infraestructura lista para pruebas de conectividad WebRTC",
+    "validations": [
+      {
+        "name": "Todos los pods en estado Running",
+        "command": "kubectl get pods -n telemedicina --no-headers | grep -v Running | wc -l",
+        "expected_output": "0"
+      },
+      {
+        "name": "LiveKit responde en endpoint de salud",
+        "command": "curl -sf https://livekit.tudominio.com/health",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Bucket de grabaciones accesible",
+        "command": "aws --endpoint-url $MINIO_ENDPOINT s3api head-bucket --bucket $RECORDINGS_BUCKET",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "next_phase": "phase-2-backend",
+  
+  "rollback_instructions": "kubectl delete namespace telemedicina && docker compose down -v"
+}

@@ -1,0 +1,137 @@
+# Checklist de Validación HIPAA para Telemedicina LiveKit
+# Versión: 1.0 | Basado en 45 CFR Part 160 y Subparts A, C, E de Part 164
+
+## INSTRUCCIONES DE USO
+Este prompt guía la validación automatizada y manual de cumplimiento HIPAA.
+Ejecutar al final de cada fase del proyecto y antes de cualquier despliegue.
+
+## SECCIÓN 1: SEGURIDAD DE ACCESO (§164.312(a))
+
+### 1.1 Control de Acceso Único (Unique User Identification)
+- [ ] Cada usuario (médico, paciente, admin) tiene ID único no reutilizable
+- [ ] Implementado via: OAuth2 sub claim + UUID en base de datos
+
+### 1.2 Gestión de Emergencias (Emergency Access Procedure)
+- [ ] Existe procedimiento documentado para acceso de emergencia a PHI
+- [ ] Implementado: rol "break-glass" con aprobación dual y logging reforzado
+
+### 1.3 Acceso Automático (Automatic Logoff)
+- [ ] Sesiones expiran tras 15 minutos de inactividad
+- [ ] Implementado: JWT exp + refresh token rotation + frontend idle detection
+
+### 1.4 Cifrado y Descifrado (Encryption and Decryption)
+- [ ] Datos en tránsito: TLS 1.3+ para HTTPS, DTLS-SRTP para WebRTC
+- [ ] Datos en reposo: AES-256 para PostgreSQL, SSE-S3 para MinIO
+
+## SECCIÓN 2: AUDITORÍA (§164.312(b))
+
+### 2.1 Registro de Actividad (Activity Logs)
+- [ ] Logs capturan: user_id, timestamp, resource_accessed, action, ip_address
+- [ ] Implementado: middleware audit_logger.py con estructura JSON
+
+### 2.2 Integridad de Logs (Log Integrity)
+- [ ] Logs protegidos contra modificación: write-once storage o firma digital
+- [ ] Implementado: envío a SIEM externo o S3 con Object Lock habilitado
+
+### 2.3 Retención de Logs (Log Retention)
+- [ ] Logs retenidos mínimo 6 años desde última fecha de uso del registro
+- [ ] Implementado: lifecycle policy en S3
+
+### 2.4 Revisión de Actividad de Acceso (Access Activity Review)
+- [ ] Reportes automáticos de accesos anómalos
+- [ ] Implementado: reglas Prometheus Alertmanager + dashboard Grafana
+
+## SECCIÓN 3: INTEGRIDAD (§164.312(c))
+
+### 3.1 Mecanismo de Integridad (Integrity Controls)
+- [ ] PHI no puede ser alterado o destruido sin autorización
+- [ ] Implementado: checksums SHA-256 para grabaciones, row-level security en PostgreSQL
+
+### 3.2 Mecanismo de Autenticación de Mensajes (Message Authentication)
+- [ ] Comunicaciones entre servicios autenticadas mutuamente
+- [ ] Implementado: mTLS entre microservicios, JWT signing para APIs externas
+
+## SECCIÓN 4: AUTENTICACIÓN (§164.312(d))
+
+### 4.1 Autenticación de Persona/Entidad
+- [ ] Verificación de identidad antes de conceder acceso a PHI
+- [ ] Implementado: OAuth2 + MFA para médicos, email+SMS para pacientes
+
+### 4.2 Gestión de Sesiones (Session Management)
+- [ ] Tokens de sesión de corta duración con refresh controlado
+- [ ] Implementado: access_token 15min + refresh_token 7d + revocation endpoint
+
+## SECCIÓN 5: SEGURIDAD DE TRANSMISIÓN (§164.312(e))
+
+### 5.1 Integridad de Transmisión (Integrity Controls)
+- [ ] PHI en tránsito protegido contra acceso no autorizado
+- [ ] Implementado: DTLS-SRTP para medios WebRTC, TLS 1.3 para señalización
+
+### 5.2 Mecanismo de Cifrado (Encryption Mechanism)
+- [ ] Cifrado de extremo a extremo cuando técnicamente viable
+- [ ] Implementado: E2EE opcional para consultas sensibles
+
+## SECCIÓN 6: ACCESIBILIDAD (WCAG 2.1 AA)
+
+### 6.1 Accesibilidad Web
+- [ ] Interfaz usable con lectores de pantalla, navegación por teclado, contraste adecuado
+- [ ] Implementado: ARIA labels, focus management
+
+### 6.2 Alternativas para Discapacidades
+- [ ] Funcionalidades críticas disponibles sin dependencia de un solo sentido
+- [ ] Implementado: chat como alternativa a audio, subtítulos automáticos
+
+## SECCIÓN 7: DERECHOS DEL PACIENTE (Privacy Rule)
+
+### 7.1 Derecho a Acceder (Right to Access)
+- [ ] Pacientes pueden descargar su PHI en formato estándar (FHIR JSON/PDF)
+
+### 7.2 Derecho a Rectificar (Right to Amend)
+- [ ] Pacientes pueden solicitar corrección de datos inexactos
+
+### 7.3 Derecho al Olvido (Right to Erasure)
+- [ ] Eliminación segura de PHI cuando legalmente requerido
+
+### 7.4 Consentimiento Informado (Informed Consent)
+- [ ] Registro explícito de consentimiento para grabación y procesamiento IA
+
+## VALIDACIÓN AUTOMATIZADA (Script hipaa-check.sh)
+
+```bash
+#!/bin/bash
+set -e
+
+echo "Iniciando validación HIPAA..."
+
+# 1. Validar cifrado en tránsito
+if ! curl -sI --tlsv1.3 https://api.tudominio.com | grep -q "TLSv1.3"; then
+  echo "TLS 1.3 no detectado"
+  exit 1
+fi
+
+# 2. Validar logging de accesos PHI
+curl -s -H "Authorization: Bearer $VALID_TOKEN" https://api.tudominio.com/fhir/Patient/1 > /dev/null
+if ! grep -q "resource_type.*Patient.*action.*read" /var/log/audit.jsonl; then
+  echo "Acceso a PHI no registrado en audit log"
+  exit 1
+fi
+
+# 3. Validar accesibilidad WCAG
+if ! npx @axe-core/cli http://localhost:3000 --standard wcag2aa --exit; then
+  echo "Violaciones de accesibilidad detectadas"
+  exit 1
+fi
+
+echo "Todas las validaciones HIPAA pasaron"
+exit 0
+```
+
+## CHECKLIST DE APROBACIÓN FINAL
+
+Antes de marcar el proyecto como "HIPAA Compliant":
+
+- [ ] Todas las secciones 1-7 validadas con 0 hallazgos críticos
+- [ ] Script hipaa-check.sh ejecutado exitosamente en staging
+- [ ] Reporte de auditoría firmado por Privacy Officer
+- [ ] Plan de respuesta a incidentes documentado y probado
+- [ ] BAA (Business Associate Agreement) firmado con proveedores cloud

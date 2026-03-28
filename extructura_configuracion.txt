@@ -1,0 +1,3065 @@
+Estructura de Configuración
+
+telemedicina-livekit/
+├── .opencode/
+│   ├── agents/                    # Subagentes del proyecto
+│   │   ├── infra-setup.md
+│   │   ├── backend-api.md
+│   │   ├── frontend-ui.md
+│   │   ├── ai-pipeline.md
+│   │   └── security-audit.md
+│   ├── prompts/                   # Prompts personalizados
+│   │   ├── fhir-extraction.txt
+│   │   ├── livekit-config.txt
+│   │   └── hipaa-checklist.txt
+│   └── workflows/                 # Flujos de ejecución
+│       ├── phase-infra.json
+│       ├── phase-backend.json
+│       ├── phase-frontend.json
+│       └── phase-ia.json
+├── opencode.json                  # Configuración principal
+└── README.md
+
+
+Paso 1: Configuración Principal (opencode.json)
+{
+  "$schema": "https://opencode.ai/config.json",
+  
+  "model": "opencode/gpt-5.1-codex",
+  "temperature": 0.2,
+  
+  "tools": {
+    "write": true,
+    "edit": true,
+    "bash": true,
+    "webfetch": true,
+    "task": true
+  },
+  
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "docker*": "allow",
+      "kubectl*": "allow",
+      "npm*": "allow",
+      "git*": "allow"
+    }
+  },
+
+Paso 2: Crear Subagentes Especializados por Fase
+Agente @infra-setup (.opencode/agents/infra-setup.md)
+---
+description: Configura infraestructura: LiveKit, CoTurn, MinIO, PostgreSQL, Kubernetes
+mode: subagent
+model: opencode/gpt-5.1-codex
+temperature: 0.2
+tools:
+  write: true
+  edit: true
+  bash: true
+permission:
+  bash:
+    "docker*": allow
+    "kubectl*": allow
+    "helm*": allow
+    "*": ask
+---
+
+Eres un ingeniero de infraestructura especializado en WebRTC para telemedicina.
+
+TU MISIÓN: Configurar la infraestructura base del proyecto telemedicina-livekit.
+
+FASES A EJECUTAR (en orden):
+1. ✅ Generar docker-compose.yml con: LiveKit, CoTurn, MinIO, PostgreSQL
+2. ✅ Configurar Helm charts para despliegue en Kubernetes (K3s)
+3. ✅ Establecer Caddy/Traefik con SSL automático
+4. ✅ Configurar políticas de red (NetworkPolicies) para aislamiento
+5. ✅ Crear scripts de backup y health checks
+
+RESTRICCIONES CRÍTICAS:
+- Todos los servicios deben usar cifrado en tránsito (TLS 1.3+)
+- PostgreSQL: cifrado en reposo AES-256
+- CoTurn: credenciales dinámicas, límite de ancho de banda
+- LiveKit: habilitar simulcast y BWE por defecto
+
+ENTREGABLES:
+- [ ] docker-compose.yml funcional con health checks
+- [ ] k8s/namespace.yaml, k8s/livekit-values.yaml
+- [ ] caddy/Caddyfile con configuración SSL
+- [ ] scripts/backup.sh, scripts/health-check.sh
+- [ ] README-infra.md con instrucciones de despliegue
+
+VALIDACIÓN:
+$ docker compose up -d && docker compose ps  # Todos en estado "healthy"
+$ kubectl get pods -n telemedicina           # Todos Running
+  
+  "agent": {
+    "build": {
+      "model": "opencode/gpt-5.1-codex",
+      "temperature": 0.3,
+      "prompt": "{file:.opencode/prompts/telemedicina-build.txt}",
+      "color": "success",
+      "permission": {
+        "task": {
+          "@infra-*": "allow",
+          "@backend-*": "allow",
+          "@frontend-*": "allow",
+          "@ai-*": "allow",
+          "@security-*": "ask"
+        }
+      }
+    },
+    
+    "plan": {
+      "model": "opencode/claude-haiku-4",
+      "temperature": 0.1,
+      "color": "info",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    }
+  }
+}
+
+Agente @backend-api (.opencode/agents/backend-api.md)
+---
+description: Desarrolla backend FastAPI: autenticación, webhooks LiveKit, integración FHIR
+mode: subagent
+model: opencode/gpt-5.1-codex
+temperature: 0.2
+tools:
+  write: true
+  edit: true
+  bash: true
+permission:
+  bash:
+    "pytest*": allow
+    "uvicorn*": allow
+    "*": ask
+---
+
+Eres un desarrollador backend especializado en APIs de salud digital.
+
+TU MISIÓN: Construir el backend de telemedicina con FastAPI + OpenEMR FHIR.
+
+FASES A EJECUTAR:
+1. ✅ Estructurar proyecto FastAPI con routers: auth, consultations, fhir
+2. ✅ Implementar autenticación OAuth2 + JWT con roles (médico/paciente/admin)
+3. ✅ Crear webhooks handler para eventos de LiveKit (room_started, recording_finished)
+4. ✅ Integrar cliente FHIR para OpenEMR: Patient, Encounter, Observation
+5. ✅ Configurar SQLAlchemy + PostgreSQL con modelos clínicos
+6. ✅ Generar documentación OpenAPI/Swagger automática
+
+RESTRICCIONES CLÍNICAS:
+- Todos los endpoints que manejan PHI deben requerir autenticación
+- Logs de auditoría para accesos a historias clínicas (HIPAA)
+- Validación de schemas FHIR R4 antes de guardar
+- Timeouts de sesión: 15 minutos de inactividad
+
+ENTREGABLES:
+- [ ] src/main.py con configuración FastAPI completa
+- [ ] src/routers/{auth,consultations,fhir,webhooks}.py
+- [ ] src/models/{user,encounter,observation}.py
+- [ ] src/services/{livekit_client,fhir_client,auth}.py
+- [ ] tests/ con coverage ≥90%
+- [ ] openapi.json generado automáticamente
+
+VALIDACIÓN:
+$ pytest tests/ --cov=src --cov-report=html  # Coverage ≥90%
+$ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/fhir/Patient  # 200 OK
+
+Agente @frontend-ui (.opencode/agents/frontend-ui.md)
+
+---
+description: Desarrolla frontend React/Next.js + LiveKit SDK: videoconsultas, dashboard, accesibilidad
+mode: subagent
+model: opencode/gpt-5.1-codex
+temperature: 0.3
+tools:
+  write: true
+  edit: true
+  bash: true
+permission:
+  bash:
+    "npm*": allow
+    "npx*": allow
+    "*": ask
+---
+
+Eres un desarrollador frontend especializado en aplicaciones de salud accesibles.
+
+TU MISIÓN: Construir la interfaz de telemedicina con React/Next.js 14 + LiveKit.
+
+FASES A EJECUTAR:
+1. ✅ Inicializar Next.js 14 con App Router + TypeScript + Tailwind CSS
+2. ✅ Integrar LiveKit Client SDK con componentes de video/audio
+3. ✅ Crear componentes clave: VideoRoom, AppointmentScheduler, MedicalHistory
+4. ✅ Implementar autenticación con NextAuth.js + JWT
+5. ✅ Garantizar accesibilidad WCAG 2.1 AA en todos los componentes
+6. ✅ Optimizar performance: bundle <500KB, LCP <2.5s
+
+RESTRICCIONES DE UX MÉDICA:
+- Controles de video/audio deben ser grandes y claramente etiquetados
+- Modal de consentimiento para grabación: obligatorio antes de iniciar
+- Indicador visual de calidad de conexión en tiempo real
+- Fallback elegante para dispositivos antiguos o conexiones lentas
+- Soporte completo para lectores de pantalla (aria-labels, roles)
+
+ENTREGABLES:
+- [ ] src/app/{page,layout,loading}.tsx configurados
+- [ ] src/components/video/{VideoRoom,ParticipantTile,Controls}.tsx
+- [ ] src/components/consultation/{Scheduler,History,Consent}.tsx
+- [ ] src/lib/{livekit,fhir,auth}.ts con hooks personalizados
+- [ ] tailwind.config.js con sistema de diseño accesible
+- [ ] tests/e2e/ con Playwright para flujos críticos
+
+VALIDACIÓN:
+$ npm run build && npm run start  # Sin errores de compilación
+$ npm run test:e2e               # Todos los flujos críticos pasan
+$ npx axe http://localhost:3000  # 0 violaciones WCAG AA
+
+Agente @ai-pipeline (.opencode/agents/ai-pipeline.md)
+
+---
+description: Configura pipeline de IA: Whisper.cpp para STT, LLM para extracción FHIR, procesamiento asíncrono
+mode: subagent
+model: opencode/gpt-5.1-codex
+temperature: 0.1
+tools:
+  write: true
+  edit: true
+  bash: true
+permission:
+  bash:
+    "python*": allow
+    "pip*": allow
+    "*": ask
+---
+
+Eres un ingeniero de ML especializado en procesamiento de audio médico.
+
+TU MISIÓN: Construir el pipeline de IA para transcripción y extracción clínica.
+
+FASES A EJECUTAR:
+1. ✅ Configurar LiveKit Agents worker con Whisper.cpp (modelo medium, cuantizado)
+2. ✅ Diseñar prompt de sistema para LLM que extraiga entidades FHIR
+3. ✅ Implementar mapeo: salida LLM → recursos FHIR válidos (Encounter, Condition)
+4. ✅ Configurar cola asíncrona (Redis) para procesamiento post-consulta
+5. ✅ Crear dashboard de revisión: médico valida resultados de IA antes de guardar
+
+RESTRICCIONES CLÍNICAS:
+- Procesamiento local preferido: Whisper.cpp > APIs externas para privacidad
+- Temperatura LLM: 0.1 para evitar "alucinaciones" en diagnósticos
+- Validación de schemas FHIR antes de guardar en OpenEMR
+- Registro de auditoría: qué IA procesó, cuándo, con qué resultado
+
+ENTREGABLES:
+- [ ] agents/worker.py con configuración Whisper.cpp + LiveKit Agents
+- [ ] prompts/fhir-extraction.txt optimizado para términos médicos
+- [ ] src/services/fhir_mapper.py con validación de schemas HL7
+- [ ] src/queue/redis_config.py para procesamiento asíncrono
+- [ ] src/dashboard/review_ui.tsx para validación médica
+
+VALIDACIÓN:
+$ python -m pytest tests/ai/ --cov=agents  # Precisión STT ≥95%
+$ python scripts/validate_fhir.py output.json  # Schema válido HL7 R4
+
+Agente @security-audit (.opencode/agents/security-audit.md)
+
+---
+description: Auditoría de seguridad: HIPAA, WCAG, cifrado, permisos, logs de auditoría
+mode: subagent
+model: opencode/gpt-5.1-codex
+temperature: 0.1
+tools:
+  write: true
+  edit: true
+  bash: true
+  webfetch: true
+permission:
+  edit: ask
+  bash:
+    "grep*": allow
+    "kubectl describe*": allow
+    "*": ask
+---
+
+Eres un auditor de seguridad especializado en salud digital (HIPAA/GDPR).
+
+TU MISIÓN: Validar y reforzar la seguridad de toda la plataforma de telemedicina.
+
+CHECKLIST DE AUDITORÍA:
+🔐 Cifrado:
+  [ ] DTLS-SRTP habilitado en WebRTC (LiveKit)
+  [ ] TLS 1.3 en todos los endpoints HTTPS
+  [ ] AES-256 para datos en reposo (PostgreSQL, MinIO)
+
+👥 Control de Acceso:
+  [ ] OAuth2 + JWT con expiración corta (15 min)
+  [ ] RBAC: roles médico/paciente/admin con permisos granulares
+  [ ] MFA obligatorio para personal médico
+
+📋 Auditoría y Logs:
+  [ ] Logs de acceso a PHI: quién, cuándo, qué recurso
+  [ ] Retención de logs: mínimo 6 años (HIPAA)
+  [ ] Alertas para accesos sospechosos o múltiples fallos
+
+♿ Accesibilidad:
+  [ ] WCAG 2.1 AA validado con axe-core
+  [ ] Contrastes de color ≥4.5:1
+  [ ] Navegación completa con teclado
+
+🗑️ Derechos del Paciente:
+  [ ] API para eliminación segura de datos ("derecho al olvido")
+  [ ] Exportación de datos en formato estándar (FHIR)
+  [ ] Consentimiento explícito registrado para grabaciones
+
+ENTREGABLES:
+- [ ] audit-report.md con hallazgos y recomendaciones priorizadas
+- [ ] scripts/hipaa-check.sh para validación automatizada
+- [ ] k8s/security-policies.yaml con NetworkPolicies y PodSecurity
+- [ ] src/middleware/audit_logger.py para registro de accesos PHI
+- [ ] docs/privacy-policy.md plantilla para consentimiento de pacientes
+
+VALIDACIÓN:
+$ ./scripts/hipaa-check.sh  # 0 críticas, ≤3 advertencias
+$ npx axe http://localhost:3000 --standard wcag2aa  # 0 violaciones
+$ kubectl describe networkpolicy -n telemedicina  # Aislamiento correcto
+
+Paso 3: Configurar Flujos de Ejecución Secuencial
+Workflow Principal (.opencode/workflows/telemedicina-main.json)
+
+{
+  "name": "telemedicina-full-deployment",
+  "description": "Ejecuta las 7 fases del proyecto de telemedicina en secuencia",
+  "version": "1.0",
+  
+  "phases": [
+    {
+      "id": "phase-0-prep",
+      "name": "Preparación",
+      "agent": "@plan",
+      "tasks": [
+        "Inicializar repositorio con estructura monorepo",
+        "Configurar OpenCode con provider LLM",
+        "Definir user stories en formato FHIR",
+        "Validar entorno de desarrollo Docker local"
+      ],
+      "exit_criteria": "README.md actualizado con estructura del proyecto",
+      "next": "phase-1-infra"
+    },
+    {
+      "id": "phase-1-infra",
+      "name": "Infraestructura Base",
+      "agent": "@infra-setup",
+      "tasks": [
+        "Desplegar LiveKit + CoTurn + MinIO + PostgreSQL vía Docker Compose",
+        "Configurar Helm charts para Kubernetes",
+        "Establecer SSL automático con Caddy",
+        "Validar conectividad WebRTC"
+      ],
+      "exit_criteria": "kubectl get pods -n telemedicina muestra todos Running",
+      "next": "phase-2-backend"
+    },
+    {
+      "id": "phase-2-backend",
+      "name": "Backend + API",
+      "agent": "@backend-api",
+      "tasks": [
+        "Implementar autenticación OAuth2 + JWT",
+        "Crear webhooks handler para LiveKit",
+        "Integrar cliente FHIR para OpenEMR",
+        "Generar documentación OpenAPI"
+      ],
+      "exit_criteria": "pytest tests/ --cov=src reporta coverage ≥90%",
+      "next": "phase-3-frontend"
+    },
+    {
+      "id": "phase-3-frontend",
+      "name": "Frontend UI/UX",
+      "agent": "@frontend-ui",
+      "tasks": [
+        "Desarrollar componentes de video con LiveKit SDK",
+        "Implementar dashboard médico y portal paciente",
+        "Garantizar accesibilidad WCAG 2.1 AA",
+        "Optimizar performance y bundle size"
+      ],
+      "exit_criteria": "npx axe http://localhost:3000 reporta 0 violaciones WCAG AA",
+      "next": "phase-4-ai"
+    },
+    {
+      "id": "phase-4-ai",
+      "name": "Pipeline de IA",
+      "agent": "@ai-pipeline",
+      "tasks": [
+        "Configurar Whisper.cpp para transcripción local",
+        "Diseñar prompt para extracción de entidades FHIR",
+        "Implementar cola asíncrona para procesamiento",
+        "Crear dashboard de revisión médica"
+      ],
+      "exit_criteria": "Precisión STT ≥95% en dataset de prueba médico",
+      "next": "phase-5-security"
+    },
+    {
+      "id": "phase-5-security",
+      "name": "Auditoría de Seguridad",
+      "agent": "@security-audit",
+      "tasks": [
+        "Validar cifrado en tránsito y reposo",
+        "Auditar controles de acceso y RBAC",
+        "Verificar logs de auditoría HIPAA",
+        "Validar accesibilidad WCAG"
+      ],
+      "exit_criteria": "./scripts/hipaa-check.sh reporta 0 críticas",
+      "next": "phase-6-deploy"
+    },
+    {
+      "id": "phase-6-deploy",
+      "name": "Despliegue y Documentación",
+      "agent": "@build",
+      "tasks": [
+        "Generar Helm chart para producción",
+        "Crear documentación técnica y de usuario",
+        "Configurar monitoreo con Prometheus+Grafana",
+        "Ejecutar pruebas de carga y aceptación"
+      ],
+      "exit_criteria": "Pruebas de carga: 50 consultas simultáneas sin degradación",
+      "next": null
+    }
+  ],
+  
+  "global_settings": {
+    "rollback_on_failure": true,
+    "notify_on_phase_complete": true,
+    "require_manual_approval_before": ["phase-5-security", "phase-6-deploy"]
+  }
+}
+
+Paso 4: Ejecutar el Proyecto con OpenCode
+Método 1: Ejecución Interactiva (Recomendado para desarrollo)
+
+# 1. Iniciar sesión de OpenCode en el directorio del proyecto
+$ cd telemedicina-livekit && opencode
+
+# 2. Dentro de la sesión, invocar el agente Plan para revisar el workflow
+> @plan Revisa el workflow en .opencode/workflows/telemedicina-main.json 
+  y confirma que todas las fases están correctamente definidas
+
+# 3. Ejecutar Fase 1: Infraestructura
+> @infra-setup Ejecuta las tareas de phase-1-infra según el workflow.
+  Confirma cada paso antes de proceder.
+
+# 4. Validar y avanzar a siguiente fase
+> @plan Valida que kubectl get pods muestra todos los servicios Running.
+  Si es correcto, procede a phase-2-backend.
+
+# 5. Continuar secuencialmente...
+> @backend-api Inicia phase-2-backend...
+
+
+
+Monitoreo del Progreso del Proyecto
+Crea un dashboard de progreso .opencode/PROGRESS.md que se actualiza automáticamente:
+
+# 🏥 Telemedicina LiveKit - Progreso del Proyecto
+
+| Fase | Estado | Completado | Validado | Notas |
+|------|--------|------------|----------|-------|
+| ✅ Phase 0: Preparación | ✔️ Done | 2025-01-15 | ✔️ | Estructura base lista |
+| ✅ Phase 1: Infraestructura | ✔️ Done | 2025-01-22 | ✔️ | LiveKit + K8s funcionando |
+| 🔄 Phase 2: Backend | ⏳ In Progress | - | - | Autenticación 80% completa |
+| ⏳ Phase 3: Frontend | 📋 Pending | - | - | Esperando backend API |
+| ⏳ Phase 4: IA Pipeline | 📋 Pending | - | - | - |
+| ⏳ Phase 5: Seguridad | 📋 Pending | - | - | - |
+| ⏳ Phase 6: Despliegue | 📋 Pending | - | - | - |
+
+**Próximo hito**: Completar integración FHIR en backend (Phase 2)
+**Bloqueadores**: Ninguno actualmente
+**Riesgos**: Validación de schemas FHIR puede requerir ajustes en OpenEMR
+
+*Última actualización: $(date)*
+
+Actualización automática con un hook de OpenCode:
+
+# .opencode/hooks/on-phase-complete.sh
+#!/bin/bash
+PHASE=$1
+STATUS=$2
+TIMESTAMP=$(date -Iseconds)
+
+# Actualizar PROGRESS.md
+sed -i "s/| 🔄 $PHASE.*/| ✅ $PHASE | ✔️ Done | $TIMESTAMP | ✔️ | Fase completada |/" .opencode/PROGRESS.md
+
+# Notificar al equipo (opcional)
+if command -v notify-send &> /dev/null; then
+  notify-send "✅ Fase completada" "$PHASE: $STATUS"
+fi
+
+
+1️⃣ Prompts Personalizados (.opencode/prompts/)
+📄 .opencode/prompts/fhir-extraction.txt
+
+# 📦 Completando la Configuración del Proyecto: Archivos Esenciales Faltantes
+
+Excelente observación. Aquí tienes **todos los archivos esenciales** que completan la configuración profesional del proyecto **telemedicina-livekit** para ejecución con OpenCode.
+
+---
+
+## 1️⃣ Prompts Personalizados (`.opencode/prompts/`)
+
+### 📄 `.opencode/prompts/fhir-extraction.txt`
+```txt
+# Prompt para Extracción de Entidades FHIR con LLM
+# Versión: 1.0 | Idioma: Español médico | Output: JSON FHIR R4 válido
+
+## ROL DEL SISTEMA
+Eres un asistente clínico especializado en codificación médica y estándares HL7 FHIR R4.
+Tu única función es extraer entidades clínicas de transcripciones de consultas médicas
+y estructurarlas como recursos FHIR válidos.
+
+## REGLAS CRÍTICAS (NO NEGOCIABLES)
+
+### 1. Principio de No Invención
+- NUNCA inventes diagnósticos, medicamentos o datos que no estén explícitamente mencionados
+- Si la información es ambigua, usa "unknown" o omite el campo, nunca asumas
+- Para síntomas: solo codifica si hay descripción clara de intensidad, ubicación o duración
+
+### 2. Formato de Salida Obligatorio
+- Output SIEMPRE en formato JSON válido (no Markdown, no texto explicativo)
+- Estructura: Bundle FHIR R4 de tipo "collection"
+- Cada recurso debe incluir: resourceType, id (generado), meta.profile (URL del perfil FHIR)
+
+### 3. Codificación Estándar
+Usa exclusivamente estos sistemas de codificación:
+- Diagnósticos/Condiciones: SNOMED-CT (http://snomed.info/sct)
+- Medicamentos: RxNorm (http://www.nlm.nih.gov/research/umls/rxnorm)
+- Observaciones/Síntomas: LOINC (http://loinc.org)
+- Procedimientos: SNOMED-CT o CPT según contexto
+
+### 4. Recursos FHIR Permitidos
+Solo genera estos tipos de recursos:
+- Patient (solo si hay datos demográficos nuevos)
+- Encounter (la consulta actual)
+- Condition (diagnósticos, problemas activos)
+- Observation (signos vitales, síntomas reportados)
+- MedicationRequest (prescripciones)
+- Procedure (procedimientos realizados)
+- DocumentReference (referencia a grabación de audio)
+
+## PLANTILLA DE PROMPT DE ENTRADA
+
+```
+TRANSCRIPCIÓN DE CONSULTA:
+"{transcription_text}"
+
+METADATOS DE LA CONSULTA:
+- Patient ID: {patient_id}
+- Practitioner ID: {practitioner_id}
+- Fecha/Hora: {encounter_datetime}
+- Modalidad: {virtual|presencial}
+- Duración: {duration_minutes} min
+
+INSTRUCCIONES:
+1. Identifica entidades clínicas explícitas en la transcripción
+2. Codifica cada entidad con el sistema de terminología apropiado
+3. Genera un Bundle FHIR R4 válido con los recursos correspondientes
+4. Incluye reference cruzadas entre recursos (ej: Condition.subject → Patient)
+5. Valida que el output sea parseable por fhir.resources Python library
+
+OUTPUT ESPERADO (JSON puro, sin markdown):
+{
+  "resourceType": "Bundle",
+  "id": "bundle-{encounter_id}",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/StructureDefinition/Bundle"]
+  },
+  "type": "collection",
+  "timestamp": "{ISO8601_timestamp}",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:{encounter_uuid}",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "enc-{encounter_id}",
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "VR",
+          "display": "virtual"
+        },
+        "subject": {"reference": "Patient/{patient_id}"},
+        "participant": [{"individual": {"reference": "Practitioner/{practitioner_id}"}}],
+        "period": {
+          "start": "{encounter_start}",
+          "end": "{encounter_end}"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:{condition_uuid}",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "cond-{unique_id}",
+        "clinicalStatus": {
+          "coding": [{
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }]
+        },
+        "code": {
+          "coding": [{
+            "system": "http://snomed.info/sct",
+            "code": "{snomed_code}",
+            "display": "{condition_display}"
+          }],
+          "text": "{condition_text_from_transcription}"
+        },
+        "subject": {"reference": "Patient/{patient_id}"},
+        "encounter": {"reference": "Encounter/enc-{encounter_id}"},
+        "onsetDateTime": "{onset_date_if_mentioned}"
+      }
+    }
+    // ... más recursos según contenido
+  ]
+}
+```
+
+## EJEMPLOS DE ENTRADA/SALIDA
+
+### Ejemplo 1: Consulta simple
+```
+ENTRADA:
+"El paciente refiere cefalea frontal de 2 días de evolución, intensidad 7/10, 
+sin náuseas ni fotofobia. Niega trauma reciente. Se indica ibuprofeno 400mg 
+cada 8 horas por 3 días."
+
+SALIDA ESPERADA (fragmento):
+{
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "code": {
+          "coding": [{
+            "system": "http://snomed.info/sct",
+            "code": "25064002",
+            "display": "Headache"
+          }],
+          "text": "cefalea frontal"
+        },
+        "severity": {
+          "coding": [{
+            "system": "http://snomed.info/sct",
+            "code": "24484000",
+            "display": "Severe"
+          }]
+        }
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "medicationCodeableConcept": {
+          "coding": [{
+            "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+            "code": "5640",
+            "display": "Ibuprofen"
+          }]
+        },
+        "dosageInstruction": [{
+          "text": "400mg cada 8 horas por 3 días",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": 8,
+              "periodUnit": "h",
+              "boundsDuration": {
+                "value": 3,
+                "unit": "d",
+                "system": "http://unitsofmeasure.org",
+                "code": "d"
+              }
+            }
+          },
+          "doseAndRate": [{
+            "doseQuantity": {
+              "value": 400,
+              "unit": "mg",
+              "system": "http://unitsofmeasure.org",
+              "code": "mg"
+            }
+          }]
+        }]
+      }
+    }
+  ]
+}
+```
+
+## VALIDACIÓN POST-GENERACIÓN
+
+Antes de retornar el JSON, auto-valida:
+1. ✅ El JSON es sintácticamente válido (puede ser parseado)
+2. ✅ Cada recurso tiene resourceType y id
+3. ✅ Las referencias cruzadas usan formato "ResourceType/id" válido
+4. ✅ Los códigos de SNOMED/RxNorm/LOINC existen en sus respectivos value sets
+5. ✅ No hay campos requeridos de FHIR R4 faltantes
+
+Si alguna validación falla, corrige antes de output. Si no puedes corregir, 
+retorna un Bundle vacío con una OperationOutcome explicando el error.
+
+## CONFIGURACIÓN DEL LLM
+
+```json
+{
+  "temperature": 0.1,
+  "top_p": 0.95,
+  "frequency_penalty": 0,
+  "presence_penalty": 0,
+  "stop": ["```", "</json>"],
+  "response_format": {"type": "json_object"}
+}
+```
+
+## MANEJO DE CASOS LÍMITE
+
+| Situación | Acción |
+|-----------|--------|
+| Transcripción en otro idioma | Traducir conceptualmente, mantener códigos estándar |
+| Término médico ambiguo | Usar código "unknown" o recurso con text solamente |
+| Conflicto de información | Priorizar lo dicho por el médico sobre el paciente |
+| Datos demográficos faltantes | No generar Patient, solo referenciar por ID externo |
+| Múltiples diagnósticos posibles | Generar Condition con clinicalStatus "provisional" |
+
+## NOTA DE PRIVACIDAD
+
+Este prompt procesa datos de salud protegidos (PHI). 
+- Nunca almacenes transcripciones completas en logs del LLM
+- Usa identificadores opacos (UUID) en lugar de nombres reales en ejemplos
+- El output debe ser el mínimo necesario para interoperabilidad clínica
+```
+
+---
+
+### 📄 `.opencode/prompts/livekit-config.txt`
+```txt
+# Configuración Óptima de LiveKit para Telemedicina
+# Versión: 1.0 | Objetivo: Máxima calidad con mínimo ancho de banda
+
+## PARÁMETROS DE SERVIDOR (livekit-server.yaml)
+
+```yaml
+# Configuración base para producción en telemedicina
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+  
+  # Codecs priorizados para eficiencia clínica
+  video:
+    codecs:
+      - mime: video/VP9
+        fmtp: "profile-id=0"  # VP9 Profile 0: mejor compatibilidad
+        max_bitrate: 1500000  # 1.5 Mbps máximo para 1080p
+        enable_simulcast: true
+      - mime: video/H264
+        fmtp: "profile-level-id=42e01f;level-asymmetry-allowed=1"
+        max_bitrate: 2000000
+        enable_simulcast: true
+    
+    # Resolución adaptativa para conexiones inestables
+    dynacast: true
+    dynacast_pause_threshold: 0.05  # Pausar si pérdida >5%
+    
+  audio:
+    codecs:
+      - mime: audio/opus
+        fmtp: "minptime=10;useinbandfec=1;sprop-stereo=0"  # Mono ahorra banda
+        max_bitrate: 64000  # 64 kbps suficiente para voz clínica
+    # Optimizaciones de audio para STT
+    audio_level_interval: 100  # ms entre mediciones de nivel
+    active_speaker_threshold: 0.4  # Sensibilidad para detección de voz
+
+  # Calidad adaptativa (BWE - Bandwidth Estimation)
+  bandwidth_estimate:
+    enabled: true
+    initial_estimate: 800000  # 800 kbps inicial
+    min_estimate: 200000      # 200 kbps mínimo (360p)
+    max_estimate: 2500000     # 2.5 Mbps máximo (1080p)
+    congestion_control: "gcc"  # Google Congestion Control
+
+# Grabación optimizada para procesamiento IA
+room:
+  auto_create: false  # Solo crear salas vía API con autenticación
+  max_participants: 4  # Médico + paciente + opcional acompañante + intérprete
+  
+recording:
+  output:
+    s3:
+      access_key: "${MINIO_ACCESS_KEY}"
+      secret_key: "${MINIO_SECRET_KEY}"
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: "${RECORDINGS_BUCKET}"
+      region: "us-east-1"  # Cambiar según región
+    
+    # Configuración de output para IA
+    video:
+      codec: vp9  # VP9 para mejor compresión
+      width: 1280
+      height: 720
+      fps: 15  # 15 fps suficiente para telemedicina, ahorra banda
+      bitrate: 1000000
+    audio:
+      codec: opus
+      sample_rate: 48000  # 48kHz óptimo para Whisper
+      channels: 1  # Mono para STT
+      bitrate: 48000  # 48 kbps calidad voz
+    
+    # Separar audio para procesamiento IA más eficiente
+    split_audio: true  # Generar archivo de audio separado del video
+    audio_only_output: true  # Opcional: grabar solo audio para IA
+
+# Seguridad y cumplimiento HIPAA
+keys:
+  # JWT signing key - usar variable de entorno en producción
+  dev-key: "${LIVEKIT_API_SECRET}"
+  
+auth:
+  # Tokens de corta duración para sesiones clínicas
+  token_ttl: 900  # 15 minutos
+  
+  # Permisos granulares por rol
+  permissions:
+    doctor:
+      canPublish: true
+      canSubscribe: true
+      canPublishData: true
+      hidden: false
+      recorder: false
+    patient:
+      canPublish: true
+      canSubscribe: true
+      canPublishData: false  # Pacientes no envían datos de control
+      hidden: false
+      recorder: false
+    observer:  # Para estudiantes/supervisores
+      canPublish: false
+      canSubscribe: true
+      canPublishData: false
+      hidden: true  # No aparecer en lista de participantes
+      recorder: false
+
+# Logging para auditoría HIPAA
+logging:
+  level: "info"
+  json: true  # Formato estructurado para ingestión en SIEM
+  fields:
+    - "room"
+    - "participant"
+    - "event"
+    - "timestamp"
+    - "ip"
+  # No loggear contenido de medios ni datos clínicos
+  redact_fields:
+    - "transcription"
+    - "medical_notes"
+    - "patient_name"
+
+# Métricas para monitoreo de calidad
+prometheus:
+  enabled: true
+  port: 9090
+  # Métricas críticas para telemedicina:
+  # - livekit_participant_media_quality: calidad percibida por participante
+  # - livekit_room_participant_count: carga por sala
+  # - livekit_ingress_bytes/egress_bytes: uso de banda
+```
+
+## PARÁMETROS DE CLIENTE (LiveKit Client SDK)
+
+```typescript
+// Configuración recomendada para frontend React/Next.js
+import { Room, RoomEvent, VideoPresets } from 'livekit-client';
+
+const room = new Room({
+  // Adaptación de calidad automática
+  adaptiveStream: {
+    pixelDensity: 'screen',  // Usar densidad de pantalla real
+    maxResolution: VideoPresets.h720,  // Máximo 720p para ahorrar banda
+    stopVideoTrackOnPause: true,  // Pausar video si no está visible
+  },
+  
+  // Optimizaciones de publicación
+  publishDefaults: {
+    videoCodec: 'vp9',  // Priorizar VP9
+    videoSimulcastLayers: [
+      VideoPresets.h1080,  // Capa alta: 1080p para buena conexión
+      VideoPresets.h720,   // Capa media: 720p estándar
+      VideoPresets.h360,   // Capa baja: 360p para conexión lenta
+    ],
+    videoBitrate: {
+      min: 200,    // 200 kbps mínimo
+      max: 1500,   // 1.5 Mbps máximo
+      ideal: 800,  // 800 kbps objetivo
+    },
+    audioPreset: 'speech',  // Optimizado para voz (mejor para STT)
+    dtx: true,  // Discontinuous TX: no enviar silencio
+    red: true,  // Redundancy: tolerancia a pérdida de paquetes
+  },
+  
+  // Manejo de reconexión para redes móviles inestables
+  reconnectPolicy: {
+    maxRetries: 5,
+    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 10000),
+  },
+});
+
+// Event listeners para monitoreo de calidad en tiempo real
+room.on(RoomEvent.MediaQualityChanged, (participant, quality) => {
+  // Reportar métricas de calidad al backend para auditoría
+  reportQualityMetric(participant.identity, quality);
+});
+
+room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+  if (quality === 'poor') {
+    // Degradar proactivamente: desactivar video, mantener audio
+    participant.setVideoEnabled(false);
+    showConnectionWarning(participant);
+  }
+});
+```
+
+## VARIABLES DE ENTORNO REQUERIDAS
+
+```bash
+# .env.example para LiveKit deployment
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=changeme-please-use-secure-random-string
+
+# MinIO/S3 para grabaciones
+MINIO_ENDPOINT=https://minio.tudominio.com
+MINIO_ACCESS_KEY=your-access-key
+MINIO_SECRET_KEY=your-secret-key
+RECORDINGS_BUCKET=telemedicina-recordings
+RECORDINGS_RETENTION_DAYS=2190  # 6 años para HIPAA
+
+# Configuración de red
+EXTERNAL_IP=your.server.public.ip
+TURN_SERVER_URL=turn:turn.tudominio.com:3478
+TURN_USERNAME=telemedicina
+TURN_CREDENTIAL=secure-turn-password
+
+# SSL/TLS
+SSL_CERT_PATH=/etc/ssl/certs/livekit.crt
+SSL_KEY_PATH=/etc/ssl/private/livekit.key
+
+# Logging y auditoría
+LOG_LEVEL=info
+AUDIT_LOG_PATH=/var/log/livekit/audit.jsonl
+HIPAA_COMPLIANCE_MODE=true
+```
+
+## COMANDOS DE VALIDACIÓN POST-CONFIGURACIÓN
+
+```bash
+# 1. Validar sintaxis del YAML de configuración
+$ yamllint livekit-server.yaml
+
+# 2. Probar conectividad WebRTC con cliente de prueba
+$ livekit-cli test --server wss://livekit.tudominio.com --token $TEST_TOKEN
+
+# 3. Verificar métricas de Prometheus
+$ curl -s http://localhost:9090/metrics | grep livekit_ | head -20
+
+# 4. Validar configuración de grabación con archivo de prueba
+$ livekit-cli ingress create --input test-video.mp4 --output s3://bucket/test
+$ aws s3 ls s3://telemedicina-recordings/  # Verificar archivo generado
+
+# 5. Prueba de carga simulada (10 salas concurrentes)
+$ for i in {1..10}; do 
+    livekit-cli room create --name "load-test-$i" & 
+  done
+$ livekit-cli list rooms  # Verificar todas creadas
+$ livekit-cli room delete --name "load-test-*"  # Limpieza
+```
+
+## OPTIMIZACIONES ESPECÍFICAS PARA TELEMEDICINA
+
+```yaml
+# Añadir a livekit-server.yaml bajo rtc:
+telemedicina_optimizations:
+  # Priorizar audio sobre video en congestión
+  audio_priority: true
+  
+  # Detección de voz para activar video solo cuando se habla
+  voice_activity_video:
+    enabled: true
+    threshold: 0.3
+    cooldown_seconds: 2
+  
+  # Modo "consulta clínica": desactivar efectos visuales innecesarios
+  clinical_mode:
+    disable_background_blur: true  # Ahorra CPU
+    disable_beauty_filter: true
+    disable_virtual_background: true
+  
+  # Grabación selectiva: solo audio para IA, video opcional
+  recording_policy:
+    default: "audio_only"  # Ahorra 90% de almacenamiento
+    video_on_request: true  # Médico puede solicitar video si es clínicamente necesario
+```
+```
+
+---
+
+### 📄 `.opencode/prompts/hipaa-checklist.txt`
+```txt
+# Checklist de Validación HIPAA para Telemedicina LiveKit
+# Versión: 1.0 | Basado en 45 CFR Part 160 y Subparts A, C, E de Part 164
+
+## 📋 INSTRUCCIONES DE USO
+Este prompt guía la validación automatizada y manual de cumplimiento HIPAA.
+Ejecutar al final de cada fase del proyecto y antes de cualquier despliegue.
+
+## 🔐 SECCIÓN 1: SEGURIDAD DE ACCESO (§164.312(a))
+
+### 1.1 Control de Acceso Único (Unique User Identification)
+[ ] Cada usuario (médico, paciente, admin) tiene ID único no reutilizable
+[ ] Implementado via: OAuth2 sub claim + UUID en base de datos
+[ ] Validación: `SELECT COUNT(DISTINCT user_id) = COUNT(*) FROM users;`
+
+### 1.2 Gestión de Emergencias (Emergency Access Procedure)
+[ ] Existe procedimiento documentado para acceso de emergencia a PHI
+[ ] Implementado: rol "break-glass" con aprobación dual y logging reforzado
+[ ] Validación: `GET /api/emergency-access` requiere 2FA + justificación
+
+### 1.3 Acceso Automático (Automatic Logoff)
+[ ] Sesiones expiran tras 15 minutos de inactividad
+[ ] Implementado: JWT exp + refresh token rotation + frontend idle detection
+[ ] Validación: Test de inactividad → redirección a login
+
+### 1.4 Cifrado y Descifrado (Encryption and Decryption)
+[ ] Datos en tránsito: TLS 1.3+ para HTTPS, DTLS-SRTP para WebRTC
+[ ] Datos en reposo: AES-256 para PostgreSQL, SSE-S3 para MinIO
+[ ] Validación: 
+  - `curl -I https://api.tudominio.com` → TLS 1.3 en headers
+  - `kubectl exec postgres -- psql -c "SHOW ssl;"` → on
+  - `aws s3api get-bucket-encryption --bucket recordings` → AES256
+
+## 📝 SECCIÓN 2: AUDITORÍA (§164.312(b))
+
+### 2.1 Registro de Actividad (Activity Logs)
+[ ] Logs capturan: user_id, timestamp, resource_accessed, action, ip_address
+[ ] Implementado: middleware audit_logger.py con estructura JSON
+[ ] Validación: `grep "PHI_access" /var/log/audit.jsonl | jq .` → campos completos
+
+### 2.2 Integridad de Logs (Log Integrity)
+[ ] Logs protegidos contra modificación: write-once storage o firma digital
+[ ] Implementado: envío a SIEM externo o S3 con Object Lock habilitado
+[ ] Validación: Intentar modificar log antiguo → operación rechazada
+
+### 2.3 Retención de Logs (Log Retention)
+[ ] Logs retenidos mínimo 6 años desde última fecha de uso del registro
+[ ] Implementado: lifecycle policy en S3: transition a Glacier después de 90 días
+[ ] Validación: `aws s3api get-bucket-lifecycle-configuration` → regla de retención
+
+### 2.4 Revisión de Actividad de Acceso (Access Activity Review)
+[ ] Reportes automáticos de accesos anómalos: múltiples fallos, horarios inusuales
+[ ] Implementado: reglas Prometheus Alertmanager + dashboard Grafana
+[ ] Validación: Simular 5 fallos de login → alerta generada en <1 minuto
+
+## 🔒 SECCIÓN 3: INTEGRIDAD (§164.312(c))
+
+### 3.1 Mecanismo de Integridad (Integrity Controls)
+[ ] PHI no puede ser alterado o destruido sin autorización
+[ ] Implementado: checksums SHA-256 para grabaciones, row-level security en PostgreSQL
+[ ] Validación: `SELECT verify_checksum('recordings/consult-123.webm');` → true
+
+### 3.2 Mecanismo de Autenticación de Mensajes (Message Authentication)
+[ ] Comunicaciones entre servicios autenticadas mutuamente
+[ ] Implementado: mTLS entre microservicios, JWT signing para APIs externas
+[ ] Validación: Intentar llamada API sin token válido → 401 Unauthorized
+
+## 👥 SECCIÓN 4: AUTENTICACIÓN DE PERSONAS/ENTIDADES (§164.312(d))
+
+### 4.1 Autenticación de Persona/Entidad
+[ ] Verificación de identidad antes de conceder acceso a PHI
+[ ] Implementado: OAuth2 + MFA para médicos, email+SMS para pacientes
+[ ] Validación: Flujo de registro → requiere verificación de identidad
+
+### 4.2 Gestión de Sesiones (Session Management)
+[ ] Tokens de sesión de corta duración con refresh controlado
+[ ] Implementado: access_token 15min + refresh_token 7d + revocation endpoint
+[ ] Validación: Usar token expirado → 401; revocar refresh → tokens subsiguientes fallan
+
+## 📡 SECCIÓN 5: SEGURIDAD DE TRANSMISIÓN (§164.312(e))
+
+### 5.1 Integridad de Transmisión (Integrity Controls)
+[ ] PHI en tránsito protegido contra acceso no autorizado
+[ ] Implementado: DTLS-SRTP para medios WebRTC, TLS 1.3 para señalización
+[ ] Validación: Packet capture con Wireshark → payload cifrado, no legible
+
+### 5.2 Mecanismo de Cifrado (Encryption Mechanism)
+[ ] Cifrado de extremo a extremo cuando técnicamente viable
+[ ] Implementado: E2EE opcional para consultas sensibles (libjitsi-meet E2EE)
+[ ] Validación: Habilitar E2EE → verificar que servidor no puede descifrar medios
+
+## ♿ SECCIÓN 6: ACCESIBILIDAD Y EQUIDAD (Sección 508 / ADA)
+
+### 6.1 Accesibilidad Web (WCAG 2.1 AA)
+[ ] Interfaz usable con lectores de pantalla, navegación por teclado, contraste adecuado
+[ ] Implementado: ARIA labels, focus management, tailwind accessibility plugin
+[ ] Validación: `npx @axe-core/cli http://localhost:3000 --standard wcag2aa` → 0 violaciones
+
+### 6.2 Alternativas para Discapacidades
+[ ] Funcionalidades críticas disponibles sin dependencia de un solo sentido
+[ ] Implementado: chat como alternativa a audio, subtítulos automáticos para video
+[ ] Validación: Desactivar audio → consulta aún posible via chat + transcripción en tiempo real
+
+## 🗑️ SECCIÓN 7: DERECHOS DEL PACIENTE (Privacy Rule)
+
+### 7.1 Derecho a Acceder (Right to Access)
+[ ] Pacientes pueden descargar su PHI en formato estándar (FHIR JSON/PDF)
+[ ] Implementado: endpoint `GET /api/patients/{id}/export` con rate limiting
+[ ] Validación: Solicitar export → recibir Bundle FHIR válido en <30 segundos
+
+### 7.2 Derecho a Rectificar (Right to Amend)
+[ ] Pacientes pueden solicitar corrección de datos inexactos
+[ ] Implementado: flujo de "amendment request" con aprobación médica y versionado
+[ ] Validación: Enviar solicitud de corrección → registro en audit log + notificación a médico
+
+### 7.3 Derecho al Olvido (Right to Erasure - GDPR alignment)
+[ ] Eliminación segura de PHI cuando legalmente requerido
+[ ] Implementado: endpoint `DELETE /api/patients/{id}` con soft-delete + crypto-shredding
+[ ] Validación: Eliminar paciente → datos irrecoverables, solo metadatos de auditoría permanecen
+
+### 7.4 Consentimiento Informado (Informed Consent)
+[ ] Registro explícito de consentimiento para grabación y procesamiento IA
+[ ] Implementado: modal obligatorio pre-consulta con firma digital + timestamp
+[ ] Validación: Intentar grabar sin consentimiento → operación bloqueada + log de intento
+
+## 🧪 VALIDACIÓN AUTOMATIZADA (Script hipaa-check.sh)
+
+```bash
+#!/bin/bash
+# Ejecutar este script como parte de CI/CD y pre-deploy
+
+set -e
+
+echo "🔐 Iniciando validación HIPAA..."
+
+# 1. Validar cifrado en tránsito
+if ! curl -sI --tlsv1.3 https://api.tudominio.com | grep -q "TLSv1.3"; then
+  echo "❌ TLS 1.3 no detectado"
+  exit 1
+fi
+
+# 2. Validar expiración de tokens JWT
+TOKEN=$(generate_test_token --expiry 900)  # 15 minutos
+sleep 901
+if curl -s -H "Authorization: Bearer $TOKEN" https://api.tudominio.com/fhir/Patient/1 | grep -q "200"; then
+  echo "❌ Token no expiró según lo esperado"
+  exit 1
+fi
+
+# 3. Validar logging de accesos PHI
+curl -s -H "Authorization: Bearer $VALID_TOKEN" https://api.tudominio.com/fhir/Patient/1 > /dev/null
+if ! grep -q "resource_type.*Patient.*action.*read" /var/log/audit.jsonl; then
+  echo "❌ Acceso a PHI no registrado en audit log"
+  exit 1
+fi
+
+# 4. Validar accesibilidad WCAG
+if ! npx @axe-core/cli http://localhost:3000 --standard wcag2aa --exit; then
+  echo "❌ Violaciones de accesibilidad detectadas"
+  exit 1
+fi
+
+# 5. Validar eliminación segura
+PATIENT_ID=$(create_test_patient)
+curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" https://api.tudominio.com/api/patients/$PATIENT_ID
+if curl -s https://api.tudominio.com/fhir/Patient/$PATIENT_ID | grep -q "resourceType"; then
+  echo "❌ Eliminación de paciente no fue efectiva"
+  exit 1
+fi
+
+echo "✅ Todas las validaciones HIPAA pasaron"
+exit 0
+```
+
+## 📊 MATRIZ DE RESPONSABILIDADES (RACI)
+
+| Control HIPAA | Responsable (R) | Aprobador (A) | Consultado (C) | Informado (I) |
+|--------------|---------------|---------------|----------------|---------------|
+| Cifrado en tránsito | Infra Team | Security Lead | DevOps | Compliance |
+| Logging de auditoría | Backend Team | Privacy Officer | Legal | Medical Staff |
+| Gestión de consentimientos | Frontend Team | Medical Director | Legal | Patients |
+| Validación de accesibilidad | UX Team | Accessibility Expert | Patients | Dev Team |
+| Eliminación segura de datos | Data Team | DPO (Data Protection Officer) | Legal | Compliance |
+
+## 🚨 PROTOCOLO DE INCIDENTES
+
+Si se detecta una violación de cumplimiento durante la validación:
+
+1. **Detener** inmediatamente cualquier despliegue o procesamiento de PHI afectado
+2. **Documentar** el hallazgo en `logs/incident-YYYYMMDD-HHMM.md` con:
+   - Control HIPAA afectado
+   - Evidencia técnica (logs, screenshots, comandos)
+   - Impacto estimado (número de pacientes, tipo de datos)
+3. **Notificar** al Privacy Officer y al equipo de seguridad en <1 hora
+4. **Corregir** la vulnerabilidad y re-ejecutar validación completa
+5. **Reportar** a autoridades si aplica (breach notification rule: >500 pacientes)
+
+## 📚 REFERENCIAS NORMATIVAS
+
+- 45 CFR Part 160: General Administrative Requirements
+- 45 CFR Part 164 Subpart C: Security Standards
+- 45 CFR Part 164 Subpart E: Privacy Standards
+- NIST SP 800-66 Rev. 2: Implementing HIPAA Security Rule
+- ONC Health IT Certification Criteria: §170.315(d)(8) - Auditable events
+- WCAG 2.1 Level AA: https://www.w3.org/TR/WCAG21/
+
+## ✅ CHECKLIST DE APROBACIÓN FINAL
+
+Antes de marcar el proyecto como "HIPAA Compliant":
+
+- [ ] Todas las secciones 1-7 validadas con 0 hallazgos críticos
+- [ ] Script `hipaa-check.sh --full` ejecutado exitosamente en staging
+- [ ] Reporte de auditoría firmado por Privacy Officer
+- [ ] Plan de respuesta a incidentes documentado y probado
+- [ ] Capacitación del equipo en manejo de PHI completada
+- [ ] BAA (Business Associate Agreement) firmado con proveedores cloud
+- [ ] Revisión legal externa completada (recomendado)
+
+*Nota: Este checklist es una guía técnica. La determinación final de cumplimiento HIPAA requiere evaluación legal calificada.*
+```
+
+---
+
+## 2️⃣ Archivos de Workflow por Fase (`.opencode/workflows/`)
+
+### 📄 `.opencode/workflows/phase-infra.json`
+```json
+{
+  "id": "phase-1-infra",
+  "name": "Infraestructura Base - LiveKit + Servicios",
+  "description": "Despliegue de la capa de comunicación WebRTC y servicios de soporte",
+  "version": "1.0",
+  
+  "agent": "@infra-setup",
+  "timeout_minutes": 45,
+  
+  "prerequisites": [
+    "Docker Desktop o K3d instalado y corriendo",
+    "kubectl configurado con contexto válido",
+    "Dominio DNS apuntando al servidor (A/AAAA records)",
+    "Certificados SSL disponibles o ACME configurado"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-1.1",
+      "name": "Generar docker-compose.yml para desarrollo local",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "docker-compose.yml",
+        "docker-compose.override.yml",
+        ".env.example"
+      ],
+      "validation": {
+        "command": "docker compose config --quiet",
+        "expected_exit_code": 0,
+        "description": "docker-compose.yml es sintácticamente válido"
+      }
+    },
+    {
+      "id": "task-1.2",
+      "name": "Configurar Helm chart para Kubernetes",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "charts/livekit/Chart.yaml",
+        "charts/livekit/values.yaml",
+        "charts/livekit/templates/deployment.yaml",
+        "charts/livekit/templates/service.yaml"
+      ],
+      "validation": {
+        "command": "helm lint charts/livekit",
+        "expected_exit_code": 0,
+        "description": "Helm chart pasa validación de sintaxis"
+      }
+    },
+    {
+      "id": "task-1.3",
+      "name": "Configurar Caddy/Traefik con SSL automático",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "caddy/Caddyfile",
+        "caddy/Dockerfile",
+        "k8s/ingress.yaml"
+      ],
+      "validation": {
+        "command": "curl -sI https://localhost:443 | grep -i tls",
+        "expected_output_contains": "TLSv1.3",
+        "description": "HTTPS responde con TLS 1.3"
+      }
+    },
+    {
+      "id": "task-1.4",
+      "name": "Configurar CoTurn para NAT traversal",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "turnserver.conf",
+        "k8s/turn-deployment.yaml",
+        "scripts/test-turn.sh"
+      ],
+      "validation": {
+        "command": "./scripts/test-turn.sh",
+        "expected_exit_code": 0,
+        "description": "Servidor TURN responde a pruebas de conectividad"
+      }
+    },
+    {
+      "id": "task-1.5",
+      "name": "Configurar MinIO para almacenamiento de grabaciones",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "minio/init-buckets.sh",
+        "k8s/minio-statefulset.yaml",
+        "policies/recordings-lifecycle.json"
+      ],
+      "validation": {
+        "command": "aws --endpoint-url http://localhost:9000 s3 ls",
+        "expected_output_contains": "telemedicina-recordings",
+        "description": "Bucket de grabaciones creado y accesible"
+      }
+    },
+    {
+      "id": "task-1.6",
+      "name": "Configurar PostgreSQL con cifrado y backups",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "postgres/postgresql.conf",
+        "postgres/pg_hba.conf",
+        "scripts/backup-postgres.sh",
+        "scripts/restore-postgres.sh"
+      ],
+      "validation": {
+        "command": "kubectl exec -n telemedicina deploy/postgres -- psql -U postgres -c \"SHOW ssl;\"",
+        "expected_output_contains": "on",
+        "description": "PostgreSQL tiene SSL habilitado"
+      }
+    },
+    {
+      "id": "task-1.7",
+      "name": "Configurar políticas de red Kubernetes (NetworkPolicies)",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "k8s/network-policies/default-deny.yaml",
+        "k8s/network-policies/livekit-allow.yaml",
+        "k8s/network-policies/backend-allow.yaml"
+      ],
+      "validation": {
+        "command": "kubectl get networkpolicy -n telemedicina | wc -l",
+        "expected_min_count": 3,
+        "description": "Al menos 3 NetworkPolicies creadas para aislamiento"
+      }
+    },
+    {
+      "id": "task-1.8",
+      "name": "Configurar monitoreo con Prometheus + Grafana",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "monitoring/prometheus-values.yaml",
+        "monitoring/grafana-dashboards/livekit-metrics.json",
+        "monitoring/alerts/hipaa-alerts.yml"
+      ],
+      "validation": {
+        "command": "curl -s http://localhost:9090/metrics | grep livekit_ | wc -l",
+        "expected_min_count": 10,
+        "description": "Métricas de LiveKit expuestas en Prometheus"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Infraestructura lista para pruebas de conectividad WebRTC",
+    "validations": [
+      {
+        "name": "Todos los pods en estado Running",
+        "command": "kubectl get pods -n telemedicina --no-headers | grep -v Running | wc -l",
+        "expected_output": "0"
+      },
+      {
+        "name": "LiveKit responde en endpoint de salud",
+        "command": "curl -sf https://livekit.tudominio.com/health",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Prueba de conectividad WebRTC exitosa",
+        "command": "livekit-cli test --server wss://livekit.tudominio.com --token $TEST_TOKEN",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Bucket de grabaciones accesible",
+        "command": "aws --endpoint-url $MINIO_ENDPOINT s3api head-bucket --bucket $RECORDINGS_BUCKET",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "artifacts": {
+    "generated": [
+      "docker-compose.yml",
+      "charts/livekit/",
+      "k8s/",
+      "scripts/backup-*.sh",
+      "monitoring/"
+    ],
+    "to_commit": [
+      "docker-compose.yml",
+      "charts/",
+      "k8s/",
+      "scripts/",
+      "monitoring/"
+    ],
+    "to_ignore": [
+      ".env",
+      "*.key",
+      "*.crt",
+      "secrets/"
+    ]
+  },
+  
+  "next_phase": "phase-2-backend",
+  
+  "rollback_instructions": "Para revertir esta fase: kubectl delete namespace telemedicina && docker compose down -v"
+}
+```
+
+---
+
+### 📄 `.opencode/workflows/phase-backend.json`
+```json
+{
+  "id": "phase-2-backend",
+  "name": "Backend API - FastAPI + FHIR + Webhooks",
+  "description": "Desarrollo de la capa de negocio: autenticación, integración FHIR, orquestación de IA",
+  "version": "1.0",
+  
+  "agent": "@backend-api",
+  "timeout_minutes": 60,
+  
+  "prerequisites": [
+    "Fase 1 (infra) completada y validada",
+    "OpenEMR FHIR API accesible con credenciales OAuth2",
+    "LiveKit server corriendo y accesible vía WebSocket"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-2.1",
+      "name": "Estructurar proyecto FastAPI con routers modulares",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/main.py",
+        "backend/src/routers/{auth,consultations,fhir,webhooks,ia}.py",
+        "backend/src/core/{config,security}.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -m py_compile src/main.py",
+        "expected_exit_code": 0,
+        "description": "Código Python compila sin errores de sintaxis"
+      }
+    },
+    {
+      "id": "task-2.2",
+      "name": "Implementar autenticación OAuth2 + JWT con RBAC",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "backend/src/services/auth.py",
+        "backend/src/models/user.py",
+        "backend/tests/test_auth.py"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/test_auth.py -v",
+        "expected_exit_code": 0,
+        "description": "Tests de autenticación pasan (cobertura ≥90%)"
+      }
+    },
+    {
+      "id": "task-2.3",
+      "name": "Crear handler de webhooks para eventos de LiveKit",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "backend/src/routers/webhooks.py",
+        "backend/src/services/livekit_client.py",
+        "backend/tests/test_webhooks.py"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/test_webhooks.py::test_recording_finished_webhook -v",
+        "expected_exit_code": 0,
+        "description": "Webhook de grabación finalizada procesado correctamente"
+      }
+    },
+    {
+      "id": "task-2.4",
+      "name": "Integrar cliente FHIR para OpenEMR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/services/fhir_client.py",
+        "backend/src/models/fhir_resources.py",
+        "backend/tests/test_fhir_integration.py"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/test_fhir_integration.py -v",
+        "expected_exit_code": 0,
+        "description": "Cliente FHIR puede leer/escribir recursos en OpenEMR de prueba"
+      }
+    },
+    {
+      "id": "task-2.5",
+      "name": "Implementar orquestación del pipeline de IA",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "backend/src/services/ai_pipeline.py",
+        "backend/src/queue/redis_config.py",
+        "backend/src/workers/ai_worker.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -c \"from src.services.ai_pipeline import process_recording; print('OK')\"",
+        "expected_exit_code": 0,
+        "description": "Módulo de orquestación de IA importa sin errores"
+      }
+    },
+    {
+      "id": "task-2.6",
+      "name": "Configurar logging de auditoría HIPAA",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "backend/src/middleware/audit_logger.py",
+        "backend/src/core/logging_config.py",
+        "backend/scripts/audit-report.py"
+      ],
+      "validation": {
+        "command": "cd backend && python -c \"from src.middleware.audit_logger import log_phi_access; log_phi_access('test', 'Patient/123', 'read'); print('OK')\"",
+        "expected_exit_code": 0,
+        "description": "Logger de auditoría registra accesos a PHI correctamente"
+      }
+    },
+    {
+      "id": "task-2.7",
+      "name": "Generar documentación OpenAPI automática",
+      "prompt_file": null,
+      "output_files": [
+        "backend/openapi.json",
+        "backend/docs/api-reference.md"
+      ],
+      "validation": {
+        "command": "cd backend && curl -s http://localhost:8000/openapi.json | jq '.info.title'",
+        "expected_output_contains": "Telemedicina LiveKit API",
+        "description": "OpenAPI spec generada y accesible"
+      }
+    },
+    {
+      "id": "task-2.8",
+      "name": "Ejecutar tests de integración backend",
+      "prompt_file": null,
+      "output_files": [
+        "backend/tests/integration/",
+        "backend/coverage-report/"
+      ],
+      "validation": {
+        "command": "cd backend && pytest tests/integration/ --cov=src --cov-report=term-missing",
+        "expected_min_coverage": 85,
+        "description": "Cobertura de tests de integración ≥85%"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Backend listo para integración con frontend y pipeline de IA",
+    "validations": [
+      {
+        "name": "API responde en health check",
+        "command": "curl -sf http://localhost:8000/health",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Autenticación OAuth2 funcional",
+        "command": "cd backend && pytest tests/test_auth.py::test_oauth2_token_flow -v",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Webhook de LiveKit procesado correctamente",
+        "command": "cd backend && pytest tests/test_webhooks.py -v",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Cobertura de código ≥90% en módulos críticos",
+        "command": "cd backend && pytest --cov=src/routers --cov-report=term | grep 'TOTAL'",
+        "expected_output_contains": "90%"
+      },
+      {
+        "name": "OpenAPI spec válida",
+        "command": "npx @redocly/cli lint backend/openapi.json",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "artifacts": {
+    "generated": [
+      "backend/src/",
+      "backend/tests/",
+      "backend/openapi.json",
+      "backend/requirements.txt",
+      "backend/Dockerfile"
+    ],
+    "to_commit": [
+      "backend/src/",
+      "backend/tests/",
+      "backend/openapi.json",
+      "backend/requirements.txt",
+      "backend/Dockerfile",
+      "backend/pyproject.toml"
+    ],
+    "to_ignore": [
+      "backend/.env",
+      "backend/__pycache__/",
+      "backend/*.pyc",
+      "backend/coverage-report/"
+    ]
+  },
+  
+  "next_phase": "phase-3-frontend",
+  
+  "rollback_instructions": "git revert --no-commit $(git log -1 --format=%H -- backend/) && git commit -m 'Rollback phase-2-backend'"
+}
+```
+
+---
+
+### 📄 `.opencode/workflows/phase-frontend.json`
+```json
+{
+  "id": "phase-3-frontend",
+  "name": "Frontend UI/UX - React/Next.js + LiveKit SDK",
+  "description": "Desarrollo de la interfaz de usuario: videoconsultas, dashboard clínico, accesibilidad",
+  "version": "1.0",
+  
+  "agent": "@frontend-ui",
+  "timeout_minutes": 75,
+  
+  "prerequisites": [
+    "Fase 2 (backend) completada y API accesible en http://localhost:8000",
+    "LiveKit server accesible para generación de tokens",
+    "Sistema de diseño aprobado en Figma"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-3.1",
+      "name": "Inicializar proyecto Next.js 14 con configuración base",
+      "prompt_file": null,
+      "output_files": [
+        "frontend/package.json",
+        "frontend/next.config.js",
+        "frontend/tsconfig.json",
+        "frontend/tailwind.config.js",
+        "frontend/src/app/{layout,page,loading}.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run build",
+        "expected_exit_code": 0,
+        "description": "Build de producción exitoso sin errores"
+      }
+    },
+    {
+      "id": "task-3.2",
+      "name": "Integrar LiveKit Client SDK con componentes de video",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "frontend/src/components/video/VideoRoom.tsx",
+        "frontend/src/components/video/ParticipantTile.tsx",
+        "frontend/src/components/video/Controls.tsx",
+        "frontend/src/lib/livekit.ts"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:unit -- VideoRoom",
+        "expected_exit_code": 0,
+        "description": "Componentes de video pasan tests unitarios"
+      }
+    },
+    {
+      "id": "task-3.3",
+      "name": "Implementar flujo de autenticación con NextAuth.js",
+      "prompt_file": ".opencode/prompts/hipaa-checklist.txt",
+      "output_files": [
+        "frontend/src/app/login/page.tsx",
+        "frontend/src/app/api/auth/[...nextauth]/route.ts",
+        "frontend/src/lib/auth.ts"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:e2e -- login-flow",
+        "expected_exit_code": 0,
+        "description": "Flujo de login completo pasa test E2E"
+      }
+    },
+    {
+      "id": "task-3.4",
+      "name": "Crear dashboard médico con agenda y historial",
+      "prompt_file": null,
+      "output_files": [
+        "frontend/src/app/doctor/dashboard/page.tsx",
+        "frontend/src/components/dashboard/AppointmentList.tsx",
+        "frontend/src/components/dashboard/PatientHistory.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npx axe http://localhost:3000/doctor/dashboard --standard wcag2aa --exit",
+        "expected_exit_code": 0,
+        "description": "Dashboard médico cumple WCAG 2.1 AA"
+      }
+    },
+    {
+      "id": "task-3.5",
+      "name": "Implementar portal del paciente con agendamiento",
+      "prompt_file": null,
+      "output_files": [
+        "frontend/src/app/patient/dashboard/page.tsx",
+        "frontend/src/components/consultation/AppointmentScheduler.tsx",
+        "frontend/src/components/consultation/ConsentModal.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:e2e -- patient-booking-flow",
+        "expected_exit_code": 0,
+        "description": "Flujo de agendamiento de paciente pasa test E2E"
+      }
+    },
+    {
+      "id": "task-3.6",
+      "name": "Integrar visualización de historia clínica FHIR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "frontend/src/components/records/FhirViewer.tsx",
+        "frontend/src/lib/fhir.ts",
+        "frontend/src/types/fhir.d.ts"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:unit -- FhirViewer",
+        "expected_exit_code": 0,
+        "description": "Componente FHIR Viewer renderiza recursos válidos"
+      }
+    },
+    {
+      "id": "task-3.7",
+      "name": "Implementar dashboard de revisión de resultados de IA",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "frontend/src/components/ai/AiReviewDashboard.tsx",
+        "frontend/src/components/ai/FhirValidationPanel.tsx"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:unit -- AiReviewDashboard",
+        "expected_exit_code": 0,
+        "description": "Dashboard de IA permite validar/editar resultados antes de guardar"
+      }
+    },
+    {
+      "id": "task-3.8",
+      "name": "Optimizar performance y bundle size",
+      "prompt_file": null,
+      "output_files": [
+        "frontend/next.config.js (actualizado)",
+        "frontend/public/manifest.json",
+        "frontend/scripts/optimize-bundle.js"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run lighthouse -- --view",
+        "expected_min_performance": 90,
+        "expected_min_accessibility": 95,
+        "description": "Lighthouse: Performance ≥90, Accessibility ≥95"
+      }
+    },
+    {
+      "id": "task-3.9",
+      "name": "Validar responsive y cross-browser",
+      "prompt_file": null,
+      "output_files": [
+        "frontend/tests/responsive.spec.ts",
+        "frontend/tests/cross-browser.spec.ts"
+      ],
+      "validation": {
+        "command": "cd frontend && npm run test:e2e -- responsive",
+        "expected_exit_code": 0,
+        "description": "UI funcional en móvil (375px), tablet (768px), desktop (1440px)"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Frontend listo para pruebas de usuario y despliegue staging",
+    "validations": [
+      {
+        "name": "Build de producción exitoso",
+        "command": "cd frontend && npm run build",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "0 violaciones de accesibilidad WCAG 2.1 AA",
+        "command": "cd frontend && npx axe http://localhost:3000 --standard wcag2aa --exit",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Bundle size <500KB gzipped",
+        "command": "cd frontend && npm run analyze-bundle | grep 'Total size'",
+        "expected_output_contains": "< 500 KB"
+      },
+      {
+        "name": "Flujo crítico E2E pasa: login → agendar → videoconsulta → finalizar",
+        "command": "cd frontend && npm run test:e2e -- critical-flow",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Lighthouse Performance ≥90",
+        "command": "cd frontend && npm run lighthouse -- --output=json | jq '.categories.performance.score'",
+        "expected_min_value": 0.90
+      }
+    ]
+  },
+  
+  "artifacts": {
+    "generated": [
+      "frontend/src/",
+      "frontend/public/",
+      "frontend/.next/",
+      "frontend/package-lock.json"
+    ],
+    "to_commit": [
+      "frontend/src/",
+      "frontend/public/",
+      "frontend/package.json",
+      "frontend/next.config.js",
+      "frontend/tailwind.config.js",
+      "frontend/tsconfig.json"
+    ],
+    "to_ignore": [
+      "frontend/.next/",
+      "frontend/node_modules/",
+      "frontend/.env.local",
+      "frontend/*.log"
+    ]
+  },
+  
+  "next_phase": "phase-4-ia",
+  
+  "rollback_instructions": "git revert --no-commit $(git log -1 --format=%H -- frontend/) && git commit -m 'Rollback phase-3-frontend'"
+}
+```
+
+---
+
+### 📄 `.opencode/workflows/phase-ia.json`
+```json
+{
+  "id": "phase-4-ia",
+  "name": "Pipeline de IA - Whisper.cpp + LLM + FHIR Mapping",
+  "description": "Configuración del procesamiento automático: transcripción, extracción clínica, validación FHIR",
+  "version": "1.0",
+  
+  "agent": "@ai-pipeline",
+  "timeout_minutes": 90,
+  
+  "prerequisites": [
+    "Fase 2 (backend) completada: endpoints de webhook y cola de procesamiento",
+    "Fase 3 (frontend) completada: dashboard de revisión de IA",
+    "GPU disponible para inferencia (recomendado) o CPU con cuantización"
+  ],
+  
+  "tasks": [
+    {
+      "id": "task-4.1",
+      "name": "Configurar LiveKit Agents worker con Whisper.cpp",
+      "prompt_file": ".opencode/prompts/livekit-config.txt",
+      "output_files": [
+        "agents/worker.py",
+        "agents/requirements.txt",
+        "agents/Dockerfile",
+        "agents/config.yaml"
+      ],
+      "validation": {
+        "command": "cd agents && python -c \"import whisper; print(whisper.__version__)\"",
+        "expected_exit_code": 0,
+        "description": "Whisper.cpp importa correctamente en entorno de worker"
+      }
+    },
+    {
+      "id": "task-4.2",
+      "name": "Implementar transcripción de audio optimizada para voz médica",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/services/transcriber.py",
+        "agents/models/whisper_config.py",
+        "tests/ai/test_transcription.py"
+      ],
+      "validation": {
+        "command": "cd agents && pytest tests/ai/test_transcription.py::test_medical_audio_transcription -v",
+        "expected_min_wer": 0.05,
+        "description": "Word Error Rate ≤5% en dataset de prueba médico"
+      }
+    },
+    {
+      "id": "task-4.3",
+      "name": "Diseñar prompt de sistema para extracción de entidades FHIR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/prompts/fhir-extraction-system.txt",
+        "agents/services/llm_extractor.py",
+        "tests/ai/test_fhir_extraction.py"
+      ],
+      "validation": {
+        "command": "cd agents && pytest tests/ai/test_fhir_extraction.py::test_fhir_bundle_validity -v",
+        "expected_exit_code": 0,
+        "description": "Output del LLM es Bundle FHIR válido según schema R4"
+      }
+    },
+    {
+      "id": "task-4.4",
+      "name": "Implementar mapeo y validación de recursos FHIR",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/services/fhir_mapper.py",
+        "agents/validators/fhir_schema_validator.py",
+        "tests/ai/test_fhir_mapping.py"
+      ],
+      "validation": {
+        "command": "cd agents && python -c \"from agents.validators.fhir_schema_validator import validate; print(validate(test_bundle))\"",
+        "expected_output_contains": "True",
+        "description": "Validador de schemas FHIR funciona correctamente"
+      }
+    },
+    {
+      "id": "task-4.5",
+      "name": "Configurar cola asíncrona con Redis para procesamiento",
+      "prompt_file": null,
+      "output_files": [
+        "agents/queue/redis_config.py",
+        "agents/workers/async_processor.py",
+        "scripts/monitor-queue.py"
+      ],
+      "validation": {
+        "command": "cd agents && python scripts/monitor-queue.py --test",
+        "expected_exit_code": 0,
+        "description": "Cola de procesamiento acepta y despacha tareas correctamente"
+      }
+    },
+    {
+      "id": "task-4.6",
+      "name": "Implementar dashboard de revisión médica de resultados de IA",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/api/review_endpoints.py",
+        "frontend/src/components/ai/AiReviewDashboard.tsx (actualizado)",
+        "tests/ai/test_review_workflow.py"
+      ],
+      "validation": {
+        "command": "cd agents && pytest tests/ai/test_review_workflow.py -v",
+        "expected_exit_code": 0,
+        "description": "Flujo de revisión: IA genera → médico valida/edita → se guarda"
+      }
+    },
+    {
+      "id": "task-4.7",
+      "name": "Configurar procesamiento local vs. API externa (fallback)",
+      "prompt_file": ".opencode/prompts/fhir-extraction.txt",
+      "output_files": [
+        "agents/services/model_router.py",
+        "agents/config/model_fallback.yaml",
+        "tests/ai/test_model_routing.py"
+      ],
+      "validation": {
+        "command": "cd agents && pytest tests/ai/test_model_routing.py::test_fallback_to_api -v",
+        "expected_exit_code": 0,
+        "description": "Sistema cambia a API externa si modelo local falla"
+      }
+    },
+    {
+      "id": "task-4.8",
+      "name": "Ejecutar pruebas de precisión y rendimiento del pipeline",
+      "prompt_file": null,
+      "output_files": [
+        "tests/ai/benchmark_results.json",
+        "reports/ai-performance-report.md"
+      ],
+      "validation": {
+        "command": "cd agents && pytest tests/ai/test_pipeline_benchmark.py -v",
+        "expected_max_processing_time": 120,
+        "expected_min_stt_accuracy": 0.95,
+        "description": "Procesamiento completo <2 min, precisión STT ≥95%"
+      }
+    }
+  ],
+  
+  "exit_criteria": {
+    "description": "Pipeline de IA listo para procesamiento en producción de consultas reales",
+    "validations": [
+      {
+        "name": "Transcripción STT: WER ≤5% en dataset médico de prueba",
+        "command": "cd agents && pytest tests/ai/test_transcription.py::test_medical_wer -v",
+        "expected_output_contains": "WER: 0.05"
+      },
+      {
+        "name": "Extracción FHIR: 100% de bundles válidos según schema R4",
+        "command": "cd agents && pytest tests/ai/test_fhir_extraction.py -v",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Tiempo de procesamiento end-to-end <2 minutos para consulta de 20 min",
+        "command": "cd agents && pytest tests/ai/test_pipeline_benchmark.py::test_end_to_end_time -v",
+        "expected_max_seconds": 120
+      },
+      {
+        "name": "Dashboard de revisión permite editar y aprobar resultados antes de guardar",
+        "command": "cd frontend && npm run test:e2e -- ai-review-flow",
+        "expected_exit_code": 0
+      },
+      {
+        "name": "Fallback a API externa funciona si modelo local no está disponible",
+        "command": "cd agents && pytest tests/ai/test_model_routing.py::test_fallback -v",
+        "expected_exit_code": 0
+      }
+    ]
+  },
+  
+  "artifacts": {
+    "generated": [
+      "agents/",
+      "tests/ai/",
+      "reports/ai-performance-report.md",
+      "models/whisper-medium-ggml.bin (si se descarga)"
+    ],
+    "to_commit": [
+      "agents/src/",
+      "agents/prompts/",
+      "agents/config/",
+      "tests/ai/",
+      "agents/requirements.txt",
+      "agents/Dockerfile"
+    ],
+    "to_ignore": [
+      "agents/models/*.bin",
+      "agents/.cache/",
+      "agents/__pycache__/",
+      "reports/raw_benchmark_data/"
+    ]
+  },
+  
+  "next_phase": "phase-5-security",
+  
+  "rollback_instructions": "git revert --no-commit $(git log -1 --format=%H -- agents/ tests/ai/) && git commit -m 'Rollback phase-4-ia'"
+}
+```
+
+---
+
+## 3️⃣ Scripts de Automatización
+
+### 📄 `.opencode/hooks/on-phase-complete.sh`
+```bash
+#!/bin/bash
+#==============================================================================
+# Hook: on-phase-complete.sh
+# Propósito: Actualizar progreso del proyecto y notificar al equipo
+# Uso: Ejecutado automáticamente por OpenCode al completar una fase
+#==============================================================================
+
+set -euo pipefail
+
+# Parámetros recibidos de OpenCode
+PHASE_ID="${1:-unknown}"
+PHASE_NAME="${2:-Unknown Phase}"
+STATUS="${3:-unknown}"  # success, failed, partial
+TIMESTAMP=$(date -Iseconds)
+USER="${OPENCODE_USER:-$(whoami)}"
+
+# Configuración
+PROGRESS_FILE=".opencode/PROGRESS.md"
+NOTIFICATION_CHANNEL="${NOTIFICATION_CHANNEL:-slack}"  # slack, email, webhook
+LOG_FILE="logs/hooks/phase-complete-$(date +%Y%m%d).log"
+
+# Crear directorio de logs si no existe
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Función de logging
+log() {
+  echo "[$(date -Iseconds)] $*" | tee -a "$LOG_FILE"
+}
+
+# Función para actualizar PROGRESS.md
+update_progress() {
+  local phase_id="$1"
+  local status="$2"
+  local timestamp="$3"
+  
+  if [[ ! -f "$PROGRESS_FILE" ]]; then
+    log "⚠️  $PROGRESS_FILE no encontrado, creando plantilla..."
+    cat > "$PROGRESS_FILE" << 'EOF'
+# 🏥 Telemedicina LiveKit - Progreso del Proyecto
+
+| Fase | ID | Estado | Completado | Validado | Notas |
+|------|-----|--------|------------|----------|-------|
+EOF
+  fi
+  
+  # Determinar emoji y texto de estado
+  local emoji=""
+  local status_text=""
+  case $status in
+    success) emoji="✅"; status_text="Completada" ;;
+    failed) emoji="❌"; status_text="Fallida" ;;
+    partial) emoji="⚠️"; status_text="Parcial" ;;
+    *) emoji="⏳"; status_text="En progreso" ;;
+  esac
+  
+  # Actualizar o agregar fila en la tabla
+  if grep -q "| $phase_id |" "$PROGRESS_FILE" 2>/dev/null; then
+    # Actualizar fila existente
+    sed -i "s|.*| $phase_id |.*|✅ $phase_id | $status_text | $timestamp | $([ "$status" = "success" ] && echo "✔️" || echo "❌") | Fase $status_text: $PHASE_NAME |" "$PROGRESS_FILE"
+  else
+    # Agregar nueva fila
+    echo "| $emoji $PHASE_NAME | $phase_id | $status_text | $timestamp | $([ "$status" = "success" ] && echo "✔️" || echo "❌") | $([ "$status" = "failed" ] && echo "Revisar logs/" || echo "") |" >> "$PROGRESS_FILE"
+  fi
+  
+  log "📝 Progreso actualizado en $PROGRESS_FILE"
+}
+
+# Función para notificar al equipo
+notify_team() {
+  local phase_name="$1"
+  local status="$2"
+  local user="$3"
+  
+  local message=""
+  local color=""
+  
+  case $status in
+    success)
+      message="✅ Fase completada: *$phase_name* por @$user"
+      color="good"
+      ;;
+    failed)
+      message="❌ Fase fallida: *$phase_name* por @$user - Revisar logs/"
+      color="danger"
+      ;;
+    partial)
+      message="⚠️ Fase parcial: *$phase_name* por @$user - Algunas tareas pendientes"
+      color="warning"
+      ;;
+  esac
+  
+  case $NOTIFICATION_CHANNEL in
+    slack)
+      if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
+        curl -s -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"$message\",\"attachments\":[{\"color\":\"$color\"}]}" \
+          "$SLACK_WEBHOOK_URL" > /dev/null 2>&1 && \
+          log "🔔 Notificación enviada a Slack" || \
+          log "⚠️  Falló envío a Slack (verificar SLACK_WEBHOOK_URL)"
+      else
+        log "⚠️  SLACK_WEBHOOK_URL no configurado, omitiendo notificación Slack"
+      fi
+      ;;
+    email)
+      if command -v mail &> /dev/null && [[ -n "${TEAM_EMAIL:-}" ]]; then
+        echo "$message" | mail -s "Telemedicina LiveKit: $phase_name - $status" "$TEAM_EMAIL" && \
+        log "🔔 Notificación enviada por email a $TEAM_EMAIL" || \
+        log "⚠️  Falló envío de email"
+      else
+        log "⚠️  TEAM_EMAIL no configurado o mail no disponible, omitiendo notificación email"
+      fi
+      ;;
+    webhook)
+      if [[ -n "${WEBHOOK_URL:-}" ]]; then
+        curl -s -X POST -H 'Content-type: application/json' \
+          --data "{\"phase\":\"$phase_name\",\"status\":\"$status\",\"user\":\"$user\",\"timestamp\":\"$timestamp\"}" \
+          "$WEBHOOK_URL" > /dev/null 2>&1 && \
+        log "🔔 Notificación enviada a webhook" || \
+        log "⚠️  Falló envío a webhook"
+      else
+        log "⚠️  WEBHOOK_URL no configurado, omitiendo notificación webhook"
+      fi
+      ;;
+    *)
+      log "ℹ️  Canal de notificación '$NOTIFICATION_CHANNEL' no reconocido"
+      ;;
+  esac
+}
+
+# Función para generar resumen de la fase
+generate_phase_summary() {
+  local phase_id="$1"
+  local output_file="logs/phases/${phase_id}-summary-$(date +%Y%m%d-%H%M).md"
+  
+  mkdir -p "$(dirname "$output_file")"
+  
+  cat > "$output_file" << EOF
+# 📋 Resumen de Fase: $PHASE_NAME
+
+**ID:** $phase_id  
+**Estado:** $STATUS  
+**Completado por:** $USER  
+**Timestamp:** $TIMESTAMP  
+
+## Archivos Generados
+\`\`\`bash
+$(git diff --name-only --diff-filter=A HEAD~1 HEAD 2>/dev/null | grep -E "^(${phase_id//-/_}|agents|frontend|backend)/ | head -20 || echo "No se detectaron cambios vía git")
+\`\`\`
+
+## Validaciones Ejecutadas
+\`\`\`bash
+# Comandos de validación ejecutados (revisar logs de OpenCode)
+# Para detalles completos: ver sesión de OpenCode o logs/
+\`\`\`
+
+## Próximos Pasos
+$(case $STATUS in
+  success) echo "- ✅ Fase lista para revisión manual" ;;
+  failed) echo "- ❌ Revisar errores en logs/ y reintentar" ;;
+  partial) echo "- ⚠️ Completar tareas pendientes antes de avanzar" ;;
+esac)
+
+---
+*Generado automáticamente por on-phase-complete.sh*
+EOF
+  
+  log "📄 Resumen generado: $output_file"
+}
+
+# Función para verificar dependencias de la siguiente fase
+check_next_phase_deps() {
+  local current_phase="$1"
+  
+  # Mapeo de fases y sus dependencias
+  declare -A NEXT_PHASE_DEPS=(
+    ["phase-1-infra"]="docker,kubectl,helm"
+    ["phase-2-backend"]="python3.10+,pip,pytest"
+    ["phase-3-frontend"]="node18+,npm,playwright"
+    ["phase-4-ia"]="python3.10+,torch,whisper.cpp"
+    ["phase-5-security"]="kubectl,trivy,axe-core"
+    ["phase-6-deploy"]="helm,k6,aws-cli"
+  )
+  
+  local next_phase=""
+  case $current_phase in
+    phase-1-infra) next_phase="phase-2-backend" ;;
+    phase-2-backend) next_phase="phase-3-frontend" ;;
+    phase-3-frontend) next_phase="phase-4-ia" ;;
+    phase-4-ia) next_phase="phase-5-security" ;;
+    phase-5-security) next_phase="phase-6-deploy" ;;
+    *) return 0 ;;  # Última fase o desconocida
+  esac
+  
+  if [[ -n "${NEXT_PHASE_DEPS[$next_phase]:-}" ]]; then
+    log "🔍 Verificando dependencias para $next_phase..."
+    local missing_deps=()
+    
+    for dep in ${NEXT_PHASE_DEPS[$next_phase]//,/ }; do
+      if ! command -v "${dep%%+*}" &> /dev/null; then
+        missing_deps+=("$dep")
+      fi
+    done
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+      log "⚠️  Dependencias faltantes para $next_phase: ${missing_deps[*]}"
+      echo "⚠️  Dependencias faltantes para $next_phase: ${missing_deps[*]}" >> "$PROGRESS_FILE"
+    else
+      log "✅ Todas las dependencias para $next_phase están instaladas"
+    fi
+  fi
+}
+
+#==============================================================================
+# EJECUCIÓN PRINCIPAL
+#==============================================================================
+main() {
+  log "🔄 Hook on-phase-complete ejecutado"
+  log "   Fase: $PHASE_NAME ($PHASE_ID)"
+  log "   Estado: $STATUS"
+  log "   Usuario: $USER"
+  
+  # 1. Actualizar archivo de progreso
+  update_progress "$PHASE_ID" "$STATUS" "$TIMESTAMP"
+  
+  # 2. Generar resumen de la fase
+  if [[ "$STATUS" != "unknown" ]]; then
+    generate_phase_summary "$PHASE_ID"
+  fi
+  
+  # 3. Notificar al equipo si la fase es crítica
+  if [[ "$STATUS" != "unknown" ]] && [[ "$PHASE_ID" =~ ^(phase-1-infra|phase-5-security|phase-6-deploy)$ ]]; then
+    notify_team "$PHASE_NAME" "$STATUS" "$USER"
+  fi
+  
+  # 4. Verificar dependencias para la siguiente fase (solo si éxito)
+  if [[ "$STATUS" == "success" ]]; then
+    check_next_phase_deps "$PHASE_ID"
+  fi
+  
+  # 5. Si falló, sugerir rollback
+  if [[ "$STATUS" == "failed" ]]; then
+    log "❌ Fase fallida. Para rollback:"
+    log "   git revert --no-commit \$(git log -1 --format=%H -- ${PHASE_ID//-/_}/) && git commit -m 'Rollback $PHASE_ID'"
+  fi
+  
+  log "✅ Hook completado"
+}
+
+# Ejecutar
+main "$@"
+```
+
+---
+
+## 4️⃣ Información Contextual del Proyecto
+
+### 📄 `.env.example` (Variables de Entorno)
+```bash
+#==============================================================================
+# Telemedicina LiveKit - Variables de Entorno
+# Copiar a .env y completar valores. NUNCA commitear .env con secretos reales.
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Configuración General
+#------------------------------------------------------------------------------
+ENVIRONMENT=production  # development, staging, production
+APP_NAME=telemedicina-livekit
+APP_VERSION=1.0.0
+TIMEZONE=America/Mexico_City
+
+#------------------------------------------------------------------------------
+# LiveKit Server
+#------------------------------------------------------------------------------
+LIVEKIT_URL=wss://livekit.tudominio.com
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=changeme-use-openssl-rand-base64-32
+LIVEKIT_ROOM_PREFIX=consultation
+LIVEKIT_TOKEN_TTL=900  # 15 minutos en segundos
+
+#------------------------------------------------------------------------------
+# MinIO / S3 - Almacenamiento de Grabaciones
+#------------------------------------------------------------------------------
+MINIO_ENDPOINT=https://minio.tudominio.com
+MINIO_ACCESS_KEY=your-access-key-here
+MINIO_SECRET_KEY=your-secret-key-here
+RECORDINGS_BUCKET=telemedicina-recordings
+RECORDINGS_REGION=us-east-1
+RECORDINGS_RETENTION_DAYS=2190  # 6 años para HIPAA
+RECORDINGS_ENCRYPTION=AES256
+
+#------------------------------------------------------------------------------
+# PostgreSQL - Base de Datos Clínica
+#------------------------------------------------------------------------------
+DATABASE_URL=postgresql://telemedicina:secure-password@postgres:5432/telemedicina
+DATABASE_SSL_MODE=require
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=40
+
+#------------------------------------------------------------------------------
+# OpenEMR FHIR API
+#------------------------------------------------------------------------------
+OPENEMR_BASE_URL=https://openemr.tudominio.com
+OPENEMR_FHIR_ENDPOINT=/apis/default/fhir
+OPENEMR_OAUTH_TOKEN_URL=https://openemr.tudominio.com/oauth2/token
+OPENEMR_CLIENT_ID=telemedicina-client
+OPENEMR_CLIENT_SECRET=secure-client-secret
+OPENEMR_FHIR_PROFILE=http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient
+
+#------------------------------------------------------------------------------
+# Autenticación y Seguridad
+#------------------------------------------------------------------------------
+JWT_SECRET=changeme-use-openssl-rand-base64-64
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15
+JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
+MFA_ENABLED=true
+MFA_ISSUER=TelemedicinaLiveKit
+
+#------------------------------------------------------------------------------
+# Pipeline de IA
+#------------------------------------------------------------------------------
+# Whisper.cpp Configuration
+WHISPER_MODEL=medium  # tiny, base, small, medium, large-v3
+WHISPER_MODEL_PATH=./models/whisper-medium-ggml.bin
+WHISPER_LANGUAGE=es
+WHISPER_COMPUTE_TYPE=float16  # float32, float16, int8
+
+# LLM Configuration (local o API)
+LLM_PROVIDER=local  # local, openai, anthropic, azure
+LLM_MODEL_PATH=./models/llama-3.1-8b-instruct.Q4_K_M.gguf  # Solo si LLM_PROVIDER=local
+LLM_API_KEY=  # Dejar vacío si usa modelo local
+LLM_API_BASE=https://api.openai.com/v1  # Solo si LLM_PROVIDER=openai
+LLM_TEMPERATURE=0.1
+LLM_MAX_TOKENS=2048
+
+# Cola de Procesamiento
+REDIS_URL=redis://redis:6379/0
+REDIS_QUEUE_NAME=ai_processing
+REDIS_WORKER_CONCURRENCY=4
+
+#------------------------------------------------------------------------------
+# Monitoreo y Logging
+#------------------------------------------------------------------------------
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_FORMAT=json  # text, json
+AUDIT_LOG_ENABLED=true
+AUDIT_LOG_PATH=/var/log/telemedicina/audit.jsonl
+PROMETHEUS_ENABLED=true
+PROMETHEUS_PORT=9090
+GRAFANA_URL=https://grafana.tudominio.com
+
+#------------------------------------------------------------------------------
+# SSL/TLS Certificates
+#------------------------------------------------------------------------------
+SSL_CERT_PATH=/etc/ssl/certs/telemedicina.crt
+SSL_KEY_PATH=/etc/ssl/private/telemedicina.key
+SSL_CA_PATH=/etc/ssl/certs/ca-bundle.crt
+SSL_MIN_VERSION=TLSv1.3
+
+#------------------------------------------------------------------------------
+# CoTurn - Servidor TURN para NAT Traversal
+#------------------------------------------------------------------------------
+TURN_SERVER_URL=turn:turn.tudominio.com:3478
+TURN_USERNAME=telemedicina
+TURN_PASSWORD=secure-turn-password
+TURN_REALM=tudominio.com
+TURN_LISTENING_PORT=3478
+TURN_MIN_PORT=49152
+TURN_MAX_PORT=65535
+
+#------------------------------------------------------------------------------
+# Configuración de Frontend (Next.js)
+#------------------------------------------------------------------------------
+NEXT_PUBLIC_API_BASE_URL=https://api.tudominio.com
+NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.tudominio.com
+NEXT_PUBLIC_APP_NAME=Telemedicina Pro
+NEXT_PUBLIC_SUPPORT_EMAIL=soporte@tudominio.com
+NEXT_PUBLIC_PRIVACY_POLICY_URL=https://tudominio.com/privacidad
+NEXT_PUBLIC_TERMS_URL=https://tudominio.com/terminos
+
+#------------------------------------------------------------------------------
+# Configuración de Notificaciones
+#------------------------------------------------------------------------------
+SLACK_WEBHOOK_URL=  # Opcional: para notificaciones de despliegue
+TEAM_EMAIL=equipo@tudominio.com  # Opcional: para alertas por email
+WEBHOOK_URL=  # Opcional: webhook genérico para integraciones
+
+#------------------------------------------------------------------------------
+# Configuración de Backup
+#------------------------------------------------------------------------------
+BACKUP_ENABLED=true
+BACKUP_SCHEDULE=0 2 * * *  # Daily at 2 AM
+BACKUP_RETENTION_COUNT=30  # Keep last 30 daily backups
+BACKUP_S3_BUCKET=telemedicina-backups
+BACKUP_ENCRYPTION_KEY=  # Clave para cifrar backups (opcional, recomendado)
+
+#------------------------------------------------------------------------------
+# Feature Flags (para despliegue progresivo)
+#------------------------------------------------------------------------------
+FEATURE_E2EE_ENABLED=false  # Cifrado extremo a extremo (experimental)
+FEATURE_AI_AUTO_APPROVE=false  # Aprobar resultados de IA sin revisión médica
+FEATURE_MULTI_LANGUAGE=true  # Soporte para múltiples idiomas en STT
+FEATURE_SCREEN_SHARE=true  # Permitir compartir pantalla en consultas
+```
+
+### 📄 `docs/credentials-template.md` (Plantilla para Gestión de Credenciales)
+```markdown
+# 🔐 Gestión de Credenciales - Telemedicina LiveKit
+
+> ⚠️ **ADVERTENCIA**: Este archivo es una plantilla. NUNCA almacenes credenciales reales en el repositorio.
+
+## 📦 Secretos por Entorno
+
+### Desarrollo Local
+```bash
+# Usar docker-compose.override.yml o .env.local
+cp .env.example .env.local
+# Editar .env.local con valores de desarrollo (pueden ser menos seguros)
+```
+
+### Staging
+```bash
+# Credenciales gestionadas via Kubernetes Secrets
+kubectl create secret generic telemedicina-secrets \
+  --from-literal=livekit-api-secret=staging-secret \
+  --from-literal=database-password=staging-db-pass \
+  --from-literal=minio-secret-key=staging-minio-key \
+  -n telemedicina-staging
+```
+
+### Producción
+```bash
+# Usar herramienta de gestión de secretos:
+# - HashiCorp Vault (recomendado)
+# - AWS Secrets Manager
+# - Azure Key Vault
+# - Google Secret Manager
+
+# Ejemplo con Vault:
+vault kv put secret/telemedicina/prod \
+  livekit_api_secret=prod-secret-xyz \
+  database_password=prod-db-pass-abc \
+  minio_secret_key=prod-minio-key-def
+```
+
+## 🔄 Rotación de Credenciales
+
+### Frecuencia Recomendada
+| Tipo de Credencial | Frecuencia de Rotación | Método |
+|-------------------|----------------------|--------|
+| JWT Signing Key | Cada 90 días | Generar nuevo, mantener anterior 24h para transición |
+| API Keys (LiveKit, OpenEMR) | Cada 180 días | Crear nueva en proveedor, actualizar config, eliminar anterior |
+| Database Passwords | Cada 90 días | Usar script de rotación con downtime mínimo |
+| SSL Certificates | Cada 90 días (Let's Encrypt) o 1 año (comercial) | Renovación automática con cert-manager |
+
+### Script de Rotación de JWT Secret
+```bash
+#!/bin/bash
+# scripts/rotate-jwt-secret.sh
+
+set -e
+
+echo "🔄 Rotando JWT secret..."
+
+# 1. Generar nuevo secret
+NEW_SECRET=$(openssl rand -base64 64)
+
+# 2. Actualizar en Vault/Kubernetes
+kubectl create secret generic jwt-secrets \
+  --from-literal=current=$NEW_SECRET \
+  --from-literal=previous=$(kubectl get secret jwt-secrets -o jsonpath='{.data.current}' | base64 -d) \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Reiniciar servicios que usan JWT (rolling update)
+kubectl rollout restart deployment -n telemedicina -l app=backend
+
+# 4. Esperar propagación (JWT anterior válido por 24h)
+echo "✅ Nuevo JWT secret aplicado. Secret anterior válido hasta $(date -d '+24 hours')"
+
+# 5. Programar eliminación del secret anterior (opcional)
+# cron: eliminar previous después de 25 horas
+```
+
+## 🛡️ Auditoría de Acceso a Credenciales
+
+Todos los accesos a secretos deben ser registrados:
+
+```json
+{
+  "timestamp": "2025-01-20T10:30:00Z",
+  "user": "deploy-bot",
+  "action": "read_secret",
+  "secret_path": "secret/telemedicina/prod/database_password",
+  "source_ip": "10.0.1.50",
+  "reason": "deployment_backend_v1.2.3"
+}
+```
+
+Configurar alertas para:
+- Accesos fuera de horario laboral
+- Múltiples intentos fallidos
+- Acceso desde IPs no autorizadas
+
+## 🚫 Lo que NUNCA debes hacer
+
+```bash
+# ❌ NO commitear .env con secretos reales
+git add .env  # ¡PELIGRO!
+
+# ❌ NO imprimir secretos en logs
+echo "Connecting with password: $DB_PASSWORD"  # ¡PELIGRO!
+
+# ❌ NO usar secretos en URLs de comando
+curl https://api.example.com?key=$API_KEY  # ¡PELIGRO! (queda en history)
+
+# ❌ NO compartir secretos por canales no seguros
+# Usar: Vault, 1Password, Bitwarden, o canales cifrados con expiración
+```
+
+## ✅ Buenas Prácticas
+
+```bash
+# ✅ Usar variables de entorno para inyección de secretos
+# ✅ Validar que secretos están presentes al inicio de la app
+# ✅ Usar secretos de corta duración cuando sea posible
+# ✅ Implementar principio de mínimo privilegio en permisos
+# ✅ Auditar acceso a secretos regularmente
+```
+```
+
+---
+
+## 5️⃣ Validaciones de Entrada
+
+### 📄 `tests/validation_criteria.md`
+```markdown
+# ✅ Criterios de Éxito por Fase
+
+## Fase 1: Infraestructura
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| Todos los pods Running | `kubectl get pods -n telemedicina --no-headers \| grep -v Running \| wc -l` | `0` |
+| LiveKit health check | `curl -sf https://livekit.tudominio.com/health` | HTTP 200 |
+| WebRTC connectivity | `livekit-cli test --server wss://livekit... --token $TOKEN` | Exit code 0 |
+| Bucket S3 accesible | `aws s3api head-bucket --bucket recordings` | Exit code 0 |
+| PostgreSQL SSL | `kubectl exec postgres -- psql -c "SHOW ssl;"` | `on` |
+| TLS 1.3 en endpoints | `curl -I --tlsv1.3 https://api...` | Header `TLSv1.3` |
+
+## Fase 2: Backend
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| API health check | `curl -sf http://localhost:8000/health` | HTTP 200 |
+| Auth OAuth2 funcional | `pytest tests/test_auth.py::test_oauth2_flow` | Exit 0, coverage ≥90% |
+| Webhook LiveKit procesado | `pytest tests/test_webhooks.py` | Exit 0 |
+| FHIR client integra con OpenEMR | `pytest tests/test_fhir_integration.py` | Exit 0 |
+| Audit logger registra PHI access | `grep "PHI_access" audit.log \| jq .` | Campos completos |
+| OpenAPI spec válida | `redocly lint openapi.json` | Exit 0 |
+
+## Fase 3: Frontend
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| Build producción exitoso | `npm run build` | Exit 0, 0 errors |
+| 0 violaciones WCAG 2.1 AA | `npx axe http://localhost:3000 --standard wcag2aa --exit` | Exit 0 |
+| Bundle size <500KB gzipped | `npm run analyze-bundle` | `Total: < 500 KB` |
+| Lighthouse Performance ≥90 | `npm run lighthouse -- --output=json \| jq '.categories.performance.score'` | `≥ 0.90` |
+| Flujo crítico E2E pasa | `npm run test:e2e -- critical-flow` | Exit 0 |
+| Responsive en 3 breakpoints | `npm run test:e2e -- responsive` | Exit 0 |
+
+## Fase 4: IA Pipeline
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| STT WER ≤5% en dataset médico | `pytest tests/ai/test_transcription.py::test_medical_wer` | `WER: ≤ 0.05` |
+| FHIR bundle válido según schema R4 | `pytest tests/ai/test_fhir_extraction.py` | Exit 0 |
+| Procesamiento end-to-end <2 min | `pytest tests/ai/test_pipeline_benchmark.py::test_end_to_end_time` | `< 120 seconds` |
+| Dashboard de revisión funcional | `npm run test:e2e -- ai-review-flow` | Exit 0 |
+| Fallback a API externa funciona | `pytest tests/ai/test_model_routing.py::test_fallback` | Exit 0 |
+
+## Fase 5: Seguridad
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| hipaa-check.sh: 0 críticas | `./scripts/hipaa-check.sh --full` | Exit 0, critical=0 |
+| NetworkPolicies aislan servicios | `kubectl get networkpolicy -n telemedicina \| wc -l` | `≥ 3` |
+| Logs de auditoría completos | `grep "resource_type.*Patient" audit.log \| jq 'has("user_id") and has("timestamp")'` | `true` |
+| Eliminación segura de PHI | `DELETE /api/patients/{id}` → `GET /fhir/Patient/{id}` | HTTP 404 |
+| MFA requerido para médicos | Intentar login médico sin MFA | HTTP 403 + mensaje MFA |
+
+## Fase 6: Despliegue
+| Criterio | Comando de Validación | Valor Esperado |
+|----------|----------------------|----------------|
+| Helm deploy exitoso | `helm upgrade --install telemedicina ./charts` | Release "telemedicina" deployed |
+| Smoke tests pasan | `./tests/smoke/prod-check.sh` | Exit 0 |
+| Pruebas de carga: 50 usuarios | `k6 run tests/load/consultation.js` | `http_req_duration(p(95)) < 500ms` |
+| Backup/restore probado | `./scripts/restore-test.sh` | Exit 0, datos recuperados |
+| Documentación actualizada | `ls docs/*.md \| xargs grep -L "TODO"` | 0 archivos con TODO |
+```
+
+### 📄 `tests/data/medical-stt-dataset/README.md`
+```markdown
+# 🗣️ Dataset Médico para Validación de STT
+
+## Propósito
+Validar que el modelo Whisper.cpp transcribe con precisión ≥95% (WER ≤0.05) 
+audio de consultas médicas en español, incluyendo terminología clínica.
+
+## Estructura del Dataset
+```
+tests/data/medical-stt-dataset/
+├── audio/
+│   ├── consult-001.wav  # 2:15 min, dolor abdominal, 48kHz mono
+│   ├── consult-002.wav  # 3:42 min, seguimiento hipertensión
+│   ├── consult-003.wav  # 1:58 min, prescripción antibiótico
+│   └── ... (20 archivos totales)
+├── transcripts/
+│   ├── consult-001.txt  # Transcripción de referencia (gold standard)
+│   ├── consult-002.txt
+│   └── ...
+├── metadata.json        # Información de cada archivo
+└── evaluate.py          # Script para calcular WER
+```
+
+## Características del Audio
+- **Formato**: WAV, 48kHz, 16-bit, mono (optimizado para STT)
+- **Duración**: 1-5 minutos por archivo (representativo de consultas reales)
+- **Contenido**: 
+  - Voz de médico y paciente (turn-taking)
+  - Terminología médica en español: síntomas, diagnósticos, medicamentos
+  - Variación de acentos: México, Colombia, Argentina, España
+  - Condiciones de grabación: oficina clínica (ruido de fondo bajo)
+
+## Métricas de Evaluación
+```python
+# Calcular Word Error Rate (WER)
+WER = (S + D + I) / N
+# Donde:
+# S = Sustituciones (palabras incorrectas)
+# D = Deleciones (palabras omitidas)
+# I = Inserciones (palabras añadidas)
+# N = Total de palabras en referencia
+
+# Umbral de aceptación: WER ≤ 0.05 (95% precisión)
+```
+
+## Ejecutar Evaluación
+```bash
+# 1. Transcribir con Whisper.cpp
+cd agents
+python -m whisper transcribe \
+  --model medium \
+  --language es \
+  --audio ../tests/data/medical-stt-dataset/audio/*.wav \
+  --output-dir /tmp/stt-output
+
+# 2. Calcular WER
+python ../tests/data/medical-stt-dataset/evaluate.py \
+  --hypothesis /tmp/stt-output \
+  --reference ../tests/data/medical-stt-dataset/transcripts
+
+# 3. Ver resultado
+# Expected: WER: 0.042 (pasa) o WER: 0.067 (falla)
+```
+
+## Contribuir al Dataset
+Para agregar nuevos casos de prueba:
+1. Grabar consulta real (con consentimiento) o sintetizar con TTS médico
+2. Transcribir manualmente con doble verificación por médico
+3. Anonimizar PHI: reemplazar nombres, IDs, fechas específicas
+4. Agregar a `metadata.json` con etiquetas: especialidad, complejidad, acento
+5. Ejecutar `evaluate.py` para asegurar que no degrada WER promedio
+
+## Consideraciones Éticas
+- Todos los audios deben tener consentimiento informado para uso en desarrollo
+- Anonimización estricta: eliminar cualquier dato que pueda identificar pacientes
+- Almacenamiento seguro: cifrado en reposo, acceso restringido al equipo de IA
+- Retención: eliminar audios originales después de 2 años, conservar solo transcripts anonimizados
+```
+
+---
+
+## 6️⃣ README.md del Proyecto
+
+### 📄 `README.md`
+```markdown
+# 🏥 Telemedicina LiveKit
+
+> Plataforma de telemedicina de código abierto con videoconsultas WebRTC, grabación inteligente y extracción automática de datos clínicos mediante IA, cumpliendo estándares HIPAA y FHIR.
+
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Node 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
+[![HIPAA Ready](https://img.shields.io/badge/HIPAA-Ready-brightgreen)](docs/compliance/hipaa.md)
+[![FHIR R4](https://img.shields.io/badge/FHIR-R4-orange)](https://hl7.org/fhir/)
+
+## ✨ Características Principales
+
+- 🎥 **Videoconsultas WebRTC de baja latencia** (<300ms) con LiveKit SFU
+- 🎙️ **Grabación optimizada**: audio separado para procesamiento IA, video opcional
+- 🤖 **Pipeline de IA integrado**: Whisper.cpp para transcripción + LLM para extracción FHIR
+- 📋 **Historia clínica interoperable**: recursos FHIR R4 compatibles con OpenEMR
+- 🔐 **Cumplimiento HIPAA/GDPR**: cifrado, auditoría, control de acceso, consentimiento
+- ♿ **Accesibilidad WCAG 2.1 AA**: usable por pacientes con discapacidades
+- 🌐 **Multiplataforma**: Web (PWA), iOS, Android (vía React Native)
+
+## 🚀 Inicio Rápido
+
+### Requisitos Previos
+```bash
+# Sistema
+- Linux/macOS/Windows con WSL2
+- Docker Desktop o K3d
+- kubectl, helm, git
+
+# Desarrollo
+- Python 3.10+ con pip
+- Node.js 18+ con npm
+- OpenSSL para generar claves JWT
+```
+
+### Despliegue Local (Desarrollo)
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/tu-org/telemedicina-livekit.git
+cd telemedicina-livekit
+
+# 2. Configurar variables de entorno
+cp .env.example .env.local
+# Editar .env.local con valores de desarrollo
+
+# 3. Iniciar servicios con Docker Compose
+docker compose up -d
+
+# 4. Esperar inicialización (~2 minutos)
+docker compose logs -f --tail=50
+
+# 5. Acceder a la aplicación
+# Frontend: https://localhost:3000
+# Backend API: https://localhost:8000/docs
+# Grafana: https://localhost:3001 (admin/admin)
+
+# 6. Crear usuario de prueba
+curl -X POST https://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"medico@test.com","password":"TempPass123!","role":"doctor"}'
+```
+
+### Despliegue en Producción (Kubernetes)
+```bash
+# 1. Configurar cluster Kubernetes (recomendado: K3s en 3 nodos mínimo)
+curl -sfL https://get.k3s.io | sh -
+
+# 2. Configurar DNS y SSL
+# - Apuntar livekit.tudominio.com, api.tudominio.com a IP del cluster
+# - Instalar cert-manager para SSL automático con Let's Encrypt
+
+# 3. Preparar secretos
+./scripts/setup-secrets.sh --env production
+
+# 4. Desplegar con Helm
+helm repo add telemedicina https://charts.tudominio.com
+helm install telemedicina telemedicina/telemedicina \
+  --values config/prod.yaml \
+  --namespace telemedicina \
+  --create-namespace
+
+# 5. Verificar despliegue
+kubectl get pods -n telemedicina
+kubectl get ingress -n telemedicina
+
+# 6. Ejecutar smoke tests
+./tests/smoke/prod-check.sh
+```
+
+## 📐 Arquitectura
+
+```mermaid
+graph TB
+    subgraph Clientes
+        A[Frontend Web - Next.js]
+        B[App Móvil - React Native]
+    end
+
+    subgraph "Capa de Comunicación"
+        C[LiveKit SFU] -->|WebRTC VP9/Opus| A
+        C -->|WebRTC| B
+        C -->|Egress API| D[MinIO/S3]
+    end
+
+    subgraph "Backend de Negocio"
+        E[FastAPI Backend] -->|FHIR R4| F[OpenEMR]
+        E -->|PostgreSQL| G[(Base de Datos)]
+        E -->|Redis| H[Cola de IA]
+    end
+
+    subgraph "Pipeline de IA"
+        I[LiveKit Agents] -->|Whisper.cpp| J[Transcripción]
+        J -->|Texto| K[LLM: Extracción FHIR]
+        K -->|Bundle FHIR| E
+    end
+
+    subgraph "Infraestructura"
+        L[Kubernetes] --> C & E & I
+        M[Caddy/Traefik] -->|SSL/TLS| A & B
+        N[Prometheus+Grafana] -->|Métricas| L
+    end
+
+    A -->|HTTPS| M
+    B -->|HTTPS| M
+    M --> E
+```
+
+## 🗂️ Estructura del Proyecto
+
+```
+telemedicina-livekit/
+├── .opencode/                    # Configuración de agentes OpenCode
+│   ├── agents/                   # Subagentes especializados
+│   ├── prompts/                  # Prompts personalizados
+│   ├── workflows/                # Flujos de ejecución por fase
+│   └── hooks/                    # Hooks de automatización
+├── backend/                      # API FastAPI + FHIR + IA orchestration
+│   ├── src/
+│   ├── tests/
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                     # Next.js + LiveKit Client SDK
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── Dockerfile
+├── agents/                       # LiveKit Agents workers para IA
+│   ├── src/
+│   ├── models/                   # Whisper.cpp, LLMs (gitignored)
+│   └── Dockerfile
+├── charts/                       # Helm charts para Kubernetes
+├── scripts/                      # Scripts de automatización
+├── tests/                        # Tests de integración y validación
+│   ├── integration/
+│   ├── data/medical-stt-dataset/
+│   └── validation_criteria.md
+├── docs/                         # Documentación completa
+│   ├── architecture.md
+│   ├── compliance/hipaa.md
+│   ├── deployment/
+│   └── user-guides/
+├── docker-compose.yml            # Desarrollo local
+├── .env.example                  # Plantilla de variables de entorno
+└── README.md                     # Este archivo
+```
+
+## 🔧 Desarrollo
+
+### Ejecutar con OpenCode (Recomendado)
+```bash
+# Iniciar sesión interactiva
+opencode
+
+# Dentro de la sesión:
+> @plan Revisa el workflow y confirma fases
+> @infra-setup Ejecuta phase-1-infra con validación
+> @backend-api Continúa con phase-2-backend
+# ... etc
+
+# O ejecutar fase específica directamente:
+opencode run --workflow .opencode/workflows/telemedicina-main.json --phase phase-3-frontend
+```
+
+### Desarrollo Tradicional
+```bash
+# Backend (FastAPI)
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend (Next.js)
+cd frontend
+npm install
+npm run dev  # http://localhost:3000
+
+# Agents (IA Pipeline)
+cd agents
+pip install -r requirements.txt
+python -m agents.worker --config config.dev.yaml
+
+# Ejecutar tests
+pytest tests/ --cov=src  # Backend
+npm run test:unit && npm run test:e2e  # Frontend
+```
+
+## 🧪 Testing
+
+```bash
+# Tests unitarios
+pytest backend/tests/unit/ -v --cov=backend/src
+npm run test:unit  # Frontend
+
+# Tests de integración
+pytest backend/tests/integration/ -v
+npm run test:e2e  # Playwright
+
+# Pruebas de carga
+k6 run tests/load/consultation.js
+
+# Validación de cumplimiento
+./scripts/hipaa-check.sh --full
+npx axe http://localhost:3000 --standard wcag2aa --exit
+
+# Benchmark de IA
+python agents/scripts/benchmark_pipeline.py --dataset medical-stt-dataset
+```
+
+## 📚 Documentación
+
+| Documento | Descripción | Enlace |
+|-----------|-------------|--------|
+| **Arquitectura** | Diagramas detallados y decisiones técnicas | [docs/architecture.md](docs/architecture.md) |
+| **Cumplimiento HIPAA** | Checklist, controles y procedimientos | [docs/compliance/hipaa.md](docs/compliance/hipaa.md) |
+| **Guía de Despliegue** | Instrucciones paso a paso para prod/staging | [docs/deployment/README.md](docs/deployment/README.md) |
+| **API Reference** | Documentación OpenAPI interactiva | [https://api.tudominio.com/docs](https://api.tudominio.com/docs) |
+| **Guía Médico** | Manual de usuario para profesionales de salud | [docs/user-guides/medicos.md](docs/user-guides/medicos.md) |
+| **Guía Paciente** | Instrucciones para pacientes | [docs/user-guides/pacientes.md](docs/user-guides/pacientes.md) |
+| **Contribuir** | Cómo reportar bugs, proponer features, enviar PRs | [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+## 🤝 Contribuir
+
+¡Las contribuciones son bienvenidas! Por favor:
+
+1. Lee [CONTRIBUTING.md](CONTRIBUTING.md)
+2. Crea un issue describiendo tu propuesta o bug
+3. Fork el repositorio y crea una rama feature/*
+4. Envía un Pull Request con tests y documentación actualizada
+
+### Áreas que necesitan ayuda:
+- [ ] Traducciones a otros idiomas (portugués, francés, quechua)
+- [ ] Integración con otros EMR además de OpenEMR
+- [ ] Optimización de Whisper.cpp para dispositivos móviles
+- [ ] Módulos de reporte epidemiológico automático
+
+## 📜 Licencia
+
+Distribuido bajo licencia **Apache License 2.0**. Ver [LICENSE](LICENSE) para detalles.
+
+> Este software es para fines de desarrollo y validación. Para uso clínico en producción, se requiere:
+> 1. Evaluación legal de cumplimiento normativo local
+> 2. Auditoría de seguridad por terceros
+> 3. Acuerdo de Nivel de Servicio (SLA) con soporte profesional
+
+## 🙏 Agradecimientos
+
+- [LiveKit](https://livekit.io) por la infraestructura WebRTC de código abierto
+- [OpenEMR](https://www.open-emr.org) por el estándar FHIR en salud
+- [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) por STT eficiente en CPU/GPU
+- [OPS/OMS](https://www.paho.org) por la plataforma All-in-One Telehealth que inspiró este proyecto
+- La comunidad de salud digital por avanzar en interoperabilidad y acceso equitativo
+
+---
+
+**¿Preguntas o soporte?**  
+📧 equipo@tudominio.com | 💬 [Discord Community](https://discord.gg/telemedicina) | 🐛 [Reportar Bug](https://github.com/tu-org/telemedicina-livekit/issues)
+```
+
+---
+
+## ✅ Checklist Final de Integración
+
+```bash
+# Antes de ejecutar el proyecto con OpenCode:
+
+[ ] 1. Estructura de directorios creada según README
+[ ] 2. Archivos .opencode/ completos: agents/, prompts/, workflows/, hooks/
+[ ] 3. .env.example copiado a .env.local con valores de desarrollo
+[ ] 4. Dependencias instaladas: docker, kubectl, helm, python3.10+, node18+
+[ ] 5. OpenCode configurado con provider LLM y API key
+[ ] 6. Dominio y DNS configurados para entorno staging (si aplica)
+[ ] 7. Certificados SSL disponibles o ACME configurado
+[ ] 8. Dataset médico de prueba descargado en tests/data/medical-stt-dataset/
+[ ] 9. README.md revisado y personalizado para tu organización
+[ ] 10. Equipo capacitado en uso de OpenCode y flujos de trabajo
+
+# Comando de inicio:
+$ cd telemedicina-livekit && opencode
+> @plan Confirma que todos los archivos de configuración están presentes
+> @infra-setup Inicia phase-1-infra con validación paso a paso
+```
+
+---
+
+> 💡 **Consejo final**: Guarda una copia de esta configuración completa en una rama `config-template` de tu repositorio. Esto te permitirá:
+> 1. Reutilizar la estructura para nuevos proyectos de salud digital
+> 2. Mantener un historial de evolución de la configuración
+> 3. Facilitar la incorporación de nuevos desarrolladores al proyecto
+
+¿Necesitas que ajuste algún archivo para un entorno específico (AWS, Azure, on-premise) o que genere plantillas adicionales para documentación clínica? 🏥✨

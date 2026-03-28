@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/gpt-5.1-codex",
+  "temperature": 0.2,
+  "tools": {
+    "write": true,
+    "edit": true,
+    "bash": true,
+    "webfetch": true,
+    "task": true
+  },
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "docker*": "allow",
+      "kubectl*": "allow",
+      "npm*": "allow",
+      "git*": "allow"
+    }
+  },
+  "agent": {
+    "build": {
+      "model": "opencode/gpt-5.1-codex",
+      "temperature": 0.3,
+      "prompt": "{file:.opencode/prompts/telemedicina-build.txt}",
+      "color": "success",
+      "permission": {
+        "task": {
+          "@infra-*": "allow",
+          "@backend-*": "allow",
+          "@frontend-*": "allow",
+          "@ai-*": "allow",
+          "@security-*": "ask"
+        }
+      }
+    },
+    "plan": {
+      "model": "opencode/claude-haiku-4",
+      "temperature": 0.1,
+      "color": "info",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    }
+  }
+}
