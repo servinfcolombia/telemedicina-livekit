@@ -83,33 +83,89 @@ npm run start
 
 ```
 telemedicina-livekit/
-├── backend/                    # API FastAPI
-│   └── src/
-│       ├── routers/
-│       │   ├── auth.py         # Autenticación JWT + roles
-│       │   ├── consultations.py # CRUD consultas
-│       │   ├── recordings.py   # Grabaciones de audio
-│       │   ├── ia.py           # Transcripción + FHIR
-│       │   └── livekit.py      # Legacy (no usado)
-│       └── services/
-│           ├── minio_client.py      # Almacenamiento S3
-│           └── whisper_transcriber.py # Transcripción Whisper
-├── frontend/                   # Next.js 14
+├── backend/                        # API FastAPI
+│   ├── src/
+│   │   ├── core/
+│   │   │   ├── config.py          # Configuración (MinIO, JWT, Whisper)
+│   │   │   └── security.py        # JWT, require_role, get_current_user
+│   │   ├── routers/
+│   │   │   ├── auth.py            # Login con detección de rol por email
+│   │   │   ├── consultations.py   # CRUD consultas (dinámico en memoria)
+│   │   │   ├── fhir.py            # Endpoints FHIR
+│   │   │   ├── ia.py              # Transcripción + FHIR + revisión
+│   │   │   ├── livekit.py         # Legacy (no usado)
+│   │   │   ├── recordings.py      # Upload/list/download grabaciones
+│   │   │   └── webhooks.py        # Webhooks
+│   │   ├── services/
+│   │   │   ├── fhir_mapper.py     # Mapeo FHIR
+│   │   │   ├── livekit_client.py  # Legacy (no usado)
+│   │   │   ├── minio_client.py    # Cliente MinIO S3
+│   │   │   └── whisper_transcriber.py # Transcripción vía Docker
+│   │   ├── middleware/            # Auditoría HIPAA
+│   │   ├── models/                # Modelos Pydantic
+│   │   ├── queue/                 # Colas Redis
+│   │   └── main.py                # FastAPI app
+│   ├── recordings/                # Grabaciones locales (fallback MinIO)
+│   ├── transcriptions/            # Transcripciones JSON
+│   ├── models/                    # Modelos Whisper (no usado)
+│   ├── tests/                     # Tests unitarios
+│   └── requirements.txt           # Dependencias Python
+│
+├── frontend/                       # Next.js 14 App Router
 │   └── src/
 │       ├── app/
-│       │   ├── auth/signin/    # Login
-│       │   ├── consultations/  # Lista y creación
-│       │   ├── room/[roomName]/ # Sala de video
-│       │   ├── recordings/     # Grabaciones
-│       │   └── transcriptions/ # Transcripciones
-│       ├── components/video/
-│       │   ├── VideoRoom.tsx   # PeerJS + grabación
-│       │   └── Controls.tsx    # Controles de video
-│       └── lib/
-│           └── auth.ts         # NextAuth config
-├── agents/                     # Workers IA
-├── docker-compose.yml          # Servicios locales
-└── CONTEXTO.md                 # Documentación detallada
+│       │   ├── api/
+│       │   │   └── consultations/[roomName]/peers/ # Peer discovery
+│       │   ├── auth/
+│       │   │   ├── signin/page.tsx      # Login
+│       │   │   └── error/page.tsx       # Error auth
+│       │   ├── consultations/
+│       │   │   ├── page.tsx             # Lista de consultas
+│       │   │   └── new/page.tsx         # Crear consulta
+│       │   ├── dashboard/page.tsx       # Dashboard
+│       │   ├── recordings/page.tsx      # Lista/descarga grabaciones
+│       │   ├── room/[roomName]/page.tsx # Sala de videollamada
+│       │   ├── transcriptions/page.tsx  # Lista/revisión transcripciones
+│       │   ├── layout.tsx               # Root layout
+│       │   ├── page.tsx                 # Home
+│       │   ├── providers.tsx            # Session provider
+│       │   └── globals.css              # Estilos globales
+│       ├── components/
+│       │   ├── ai/
+│       │   │   └── ReviewDashboard.tsx  # Dashboard revisión IA
+│       │   ├── consultation/            # Componentes de consulta
+│       │   ├── layout/
+│       │   │   └── Header.tsx           # Header con navegación
+│       │   ├── ui/
+│       │   │   ├── Button.tsx           # Botón reutilizable
+│       │   │   ├── Card.tsx             # Card reutilizable
+│       │   │   └── Input.tsx            # Input reutilizable
+│       │   └── video/
+│       │       ├── VideoRoom.tsx        # PeerJS + grabación + transcripción
+│       │       ├── Controls.tsx         # Controles (mic, cámara, salir)
+│       │       ├── ParticipantTile.tsx  # Tile de participante
+│       │       └── JitsiRoom.tsx        # Legacy (no usado)
+│       ├── hooks/
+│       │   ├── useAuth.tsx              # Hook de autenticación
+│       │   ├── useJitsi.ts              # Legacy (no usado)
+│       │   └── useLiveKit.ts            # Legacy (no usado)
+│       ├── lib/
+│       │   ├── auth.ts                  # NextAuth config
+│       │   ├── api.ts                   # Cliente API
+│       │   └── fetchApi.ts              # Fetch wrapper
+│       └── types/
+│           └── next-auth.d.ts           # Tipos NextAuth
+│
+├── agents/                         # Workers IA (Whisper config)
+├── charts/                         # Helm charts (Kubernetes)
+├── k8s/                            # Kubernetes manifests
+├── monitoring/                     # Prometheus + Grafana
+├── docs/                           # Documentación
+├── scripts/                        # Scripts de prueba
+├── docker-compose.yml              # Servicios Docker
+├── turnserver.conf                 # CoTURN (no usado)
+├── CONTEXTO.md                     # Documentación detallada del proyecto
+└── README.md                       # Este archivo
 ```
 
 ## API Endpoints
