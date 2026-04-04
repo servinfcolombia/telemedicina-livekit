@@ -204,13 +204,26 @@ telemedicina-livekit/
 | Capa | Tecnología |
 |------|-----------|
 | **Frontend** | Next.js 14, TypeScript, Tailwind CSS, PeerJS |
-| **Backend** | FastAPI, Python 3.13, httpx |
+| **Backend** | FastAPI, Python 3.13, SQLAlchemy, httpx |
 | **Video** | PeerJS (WebRTC P2P) |
 | **Transcripción** | Whisper Docker (onerahmet/openai-whisper-asr-webservice) |
 | **Almacenamiento** | MinIO (S3 compatible) con fallback local |
-| **Base de datos** | PostgreSQL |
+| **Base de datos** | PostgreSQL 15 |
 | **Cache/Queue** | Redis |
 | **Infra** | Docker, Docker Compose |
+
+## Extracción FHIR
+
+El sistema extrae automáticamente entidades clínicas de las transcripciones:
+
+| Tipo | Sistema | Cantidad | Ejemplos |
+|------|---------|----------|---------|
+| **Condition** | SNOMED CT | 25+ | Cefalea, fiebre, tos, dolor abdominal, diarrea |
+| **MedicationRequest** | RxNorm | 20+ | Ibuprofeno, paracetamol, amoxicilina, metformina |
+| **Observation** | LOINC | 11 | Presión arterial, frecuencia cardíaca, temperatura |
+| **Procedure** | SNOMED CT | 14+ | Vacunación, electrocardiograma, ecografía |
+
+Cada recurso FHIR incluye codificación estándar, referencias al paciente y encuentro, y validación automática.
 
 ## Servicios Docker
 
