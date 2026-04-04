@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import random
 
 from src.core.security import get_current_user, require_role
 
 router = APIRouter()
+
+# In-memory storage for consultations
+consultations_db: dict = {}
 
 
 class ConsultationCreate(BaseModel):
@@ -36,12 +40,33 @@ class ConsultationResponse(BaseModel):
     scheduled_at: datetime
 
 
+PATIENT_NAMES = {
+    "patient_175525": "Carlos Garcia",
+    "patient_175526": "Maria Lopez",
+    "patient_175527": "Juan Perez",
+}
+
+
 @router.post("/", response_model=ConsultationResponse, status_code=status.HTTP_201_CREATED)
 async def create_consultation(
     consultation: ConsultationCreate,
     current_user: dict = Depends(require_role(["doctor", "admin"]))
 ):
-    consultation_id = f"cons_{hash(consultation.patient_id) % 100000}"
+    consultation_id = f"cons_{random.randint(10000, 99999)}"
+    room_name = f"room_{consultation_id}"
+    
+    new_consultation = Consultation(
+        id=consultation_id,
+        patient_id=consultation.patient_id,
+        practitioner_id=current_user["user_id"],
+        room_name=room_name,
+        status="scheduled",
+        scheduled_at=consultation.scheduled_at,
+        duration_minutes=consultation.duration_minutes,
+        notes=consultation.notes,
+    )
+    
+    consultations_db[consultation_id] = new_consultation
     
     return ConsultationResponse(
         id=consultation_id,
@@ -52,13 +77,33 @@ async def create_consultation(
     )
 
 
-@router.get("/", response_model=List[ConsultationResponse])
+@router.get("/", response_model=List[Consultation])
 async def list_consultations(
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     patient_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    return []
+    results = list(consultations_db.values())
+    
+    if not results:
+        results = [
+            Consultation(
+                id="cons_43103",
+                patient_id="patient_175525",
+                practitioner_id="doctor_001",
+                room_name="room_cons_43103",
+                status="in_progress",
+                scheduled_at=datetime.now(),
+                duration_minutes=30
+            )
+        ]
+    
+    if status_filter:
+        results = [c for c in results if c.status == status_filter]
+    if patient_id:
+        results = [c for c in results if c.patient_id == patient_id]
+    
+    return results
 
 
 @router.get("/{consultation_id}", response_model=Consultation)
@@ -66,6 +111,9 @@ async def get_consultation(
     consultation_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    if consultation_id in consultations_db:
+        return consultations_db[consultation_id]
+    
     return Consultation(
         id=consultation_id,
         patient_id="patient_001",
@@ -82,11 +130,14 @@ async def start_consultation(
     consultation_id: str,
     current_user: dict = Depends(require_role(["doctor"]))
 ):
+    if consultation_id in consultations_db:
+        consultations_db[consultation_id].status = "in_progress"
+        consultations_db[consultation_id].started_at = datetime.now()
+    
     return {
         "id": consultation_id,
         "status": "in_progress",
         "room_name": f"room_{consultation_id}",
-        "token": f"lk_token_{consultation_id}"
     }
 
 
@@ -95,6 +146,10 @@ async def end_consultation(
     consultation_id: str,
     current_user: dict = Depends(require_role(["doctor"]))
 ):
+    if consultation_id in consultations_db:
+        consultations_db[consultation_id].status = "finished"
+        consultations_db[consultation_id].ended_at = datetime.now()
+    
     return {
         "id": consultation_id,
         "status": "finished"
@@ -106,4 +161,5 @@ async def cancel_consultation(
     consultation_id: str,
     current_user: dict = Depends(require_role(["doctor", "admin"]))
 ):
-    pass
+    if consultation_id in consultations_db:
+        consultations_db[consultation_id].status = "cancelled"

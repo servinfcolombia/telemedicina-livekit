@@ -2,39 +2,26 @@
     admin off
     email admin@localhost
     auto_https off
+    http_port 7080
+    https_port 7443
 }
 
-# LiveKit WebSocket
-livekit.{$DOMAIN}:7888 {
-    reverse_proxy localhost:7880
+:7888 {
+    reverse_proxy livekit:7880
     encode zstd gzip
 }
 
-# LiveKit HTTP
-livekit-http.{$DOMAIN}:7080 {
-    reverse_proxy localhost:7880
+:9001 {
+    reverse_proxy minio:9001
     encode zstd gzip
 }
 
-# MinIO Console
-minio.{$DOMAIN}:9001 {
-    reverse_proxy localhost:9001
+:9000 {
+    reverse_proxy minio:9000
     encode zstd gzip
 }
 
-# MinIO API
-minio-api.{$DOMAIN}:9000 {
-    reverse_proxy localhost:9000
-    encode zstd gzip
-}
-
-# PostgreSQL (only via reverse proxy for security)
-postgres.{$DOMAIN}:5432 {
-    reverse_proxy localhost:5432
-}
-
-# Health check endpoint
-health.{$DOMAIN}:8080 {
+:8080 {
     respond / "OK" 200
     header Access-Control-Allow-Origin "*"
 }

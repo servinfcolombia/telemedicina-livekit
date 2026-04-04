@@ -162,16 +162,19 @@ export function ReviewDashboard() {
                     Entidades FHIR Extraídas
                   </h3>
                   <div className="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
-                    {selectedItem.fhirBundle.entry?.map((entry, index) => (
-                      <div key={index} className="mb-2 pb-2 border-b border-gray-200 last:border-0">
-                        <span className="font-medium text-gray-900">{entry.resource?.resourceType}</span>
-                        {entry.resource?.code?.coding?.[0] && (
-                          <p className="text-sm text-gray-600">
-                            {entry.resource.code.coding[0].display} ({entry.resource.code.coding[0].code})
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                    {selectedItem.fhirBundle.entry?.map((entry, index) => {
+                      const resource = entry.resource as { resourceType?: string; code?: { coding?: Array<{ display?: string; code?: string }> } };
+                      return (
+                        <div key={index} className="mb-2 pb-2 border-b border-gray-200 last:border-0">
+                          <span className="font-medium text-gray-900">{resource.resourceType}</span>
+                          {resource.code?.coding?.[0] && (
+                            <p className="text-sm text-gray-600">
+                              {resource.code.coding[0].display} ({resource.code.coding[0].code})
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

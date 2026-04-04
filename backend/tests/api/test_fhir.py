@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import doctor_token
+
 
 def test_get_patients_unauthorized(client):
     response = client.get("/fhir/Patient")
@@ -28,7 +30,7 @@ def test_get_patient_by_id(client, auth_token):
     assert data["resourceType"] == "Patient"
 
 
-def test_create_patient_as_doctor(client, auth_token):
+def test_create_patient_as_doctor(client, doctor_token):
     patient_data = {
         "resourceType": "Patient",
         "name": [{"family": "Doe", "given": ["Jane"]}],
@@ -36,7 +38,7 @@ def test_create_patient_as_doctor(client, auth_token):
     }
     response = client.post(
         "/fhir/Patient",
-        headers={"Authorization": f"Bearer {auth_token}"},
+        headers={"Authorization": f"Bearer {doctor_token}"},
         json=patient_data
     )
     assert response.status_code == 200
@@ -69,7 +71,7 @@ def test_get_encounter_by_id(client, auth_token):
     assert data["resourceType"] == "Encounter"
 
 
-def test_create_encounter_as_doctor(client, auth_token):
+def test_create_encounter_as_doctor(client, doctor_token):
     encounter_data = {
         "resourceType": "Encounter",
         "status": "planned",
@@ -80,7 +82,7 @@ def test_create_encounter_as_doctor(client, auth_token):
     }
     response = client.post(
         "/fhir/Encounter",
-        headers={"Authorization": f"Bearer {auth_token}"},
+        headers={"Authorization": f"Bearer {doctor_token}"},
         json=encounter_data
     )
     assert response.status_code == 200

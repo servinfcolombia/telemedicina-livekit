@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 
-def test_create_consultation_as_doctor(client, auth_token):
+def test_create_consultation_as_doctor(client, doctor_token):
     consultation_data = {
         "patient_id": "patient_123",
         "scheduled_at": (datetime.now() + timedelta(days=1)).isoformat(),
@@ -12,7 +12,7 @@ def test_create_consultation_as_doctor(client, auth_token):
     }
     response = client.post(
         "/api/v1/consultations/",
-        headers={"Authorization": f"Bearer {auth_token}"},
+        headers={"Authorization": f"Bearer {doctor_token}"},
         json=consultation_data
     )
     assert response.status_code == 201
@@ -45,10 +45,10 @@ def test_get_consultation_by_id(client, auth_token):
     assert data["id"] == "cons_123"
 
 
-def test_start_consultation(client, auth_token):
+def test_start_consultation(client, doctor_token):
     response = client.patch(
         "/api/v1/consultations/cons_123/start",
-        headers={"Authorization": f"Bearer {auth_token}"}
+        headers={"Authorization": f"Bearer {doctor_token}"}
     )
     assert response.status_code == 200
     data = response.json()
@@ -57,19 +57,19 @@ def test_start_consultation(client, auth_token):
     assert "token" in data
 
 
-def test_end_consultation(client, auth_token):
+def test_end_consultation(client, doctor_token):
     response = client.patch(
         "/api/v1/consultations/cons_123/end",
-        headers={"Authorization": f"Bearer {auth_token}"}
+        headers={"Authorization": f"Bearer {doctor_token}"}
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "finished"
 
 
-def test_cancel_consultation(client, auth_token):
+def test_cancel_consultation(client, doctor_token):
     response = client.delete(
         "/api/v1/consultations/cons_123",
-        headers={"Authorization": f"Bearer {auth_token}"}
+        headers={"Authorization": f"Bearer {doctor_token}"}
     )
     assert response.status_code == 204

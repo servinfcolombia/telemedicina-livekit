@@ -1,5 +1,7 @@
+import os
+import time
 from typing import Optional, Dict, Any
-from livekit import api
+import jwt
 from src.core.config import settings
 
 
@@ -8,8 +10,6 @@ class LiveKitClient:
         self.api_key = settings.LIVEKIT_API_KEY
         self.api_secret = settings.LIVEKIT_API_SECRET
         self.url = settings.LIVEKIT_URL
-        self._room_api = api.RoomServiceApi(self.url, self.api_key, self.api_secret)
-        self._access_token = api.AccessToken(self.api_key, self.api_secret)
     
     def generate_token(
         self,
@@ -18,25 +18,37 @@ class LiveKitClient:
         name: str,
         role: str = "publisher"
     ) -> str:
-        token = api.AccessToken(self.api_key, self.api_secret)
-        token.identity = identity
-        token.name = name
-        token.add_grant(
-            api.RoomGrant(
-                room_join=True,
-                room=room_name,
-                can_publish=role in ["publisher", "doctor"],
-                can_subscribe=role in ["subscriber", "publisher", "doctor"],
-            )
-        )
-        return token.to_jwt()
+        now = int(time.time())
+        exp = now + 3600
+        
+        video_grants = {
+            "roomJoin": True,
+            "room": room_name,
+            "canPublish": True,
+            "canSubscribe": True,
+            "canPublishData": True,
+            "canUpdateOwnMetadata": True,
+        }
+        
+        payload = {
+            "iss": self.api_key,
+            "sub": identity,
+            "name": name,
+            "exp": exp,
+            "nbf": now,
+            "video": video_grants,
+            "metadata": "",
+        }
+        
+        token = jwt.encode(payload, self.api_secret, algorithm="HS256")
+        return token
     
     async def create_room(self, room_name: str, max_participants: int = 4) -> Dict[str, Any]:
         return {"room_name": room_name, "max_participants": max_participants}
     
     async def delete_room(self, room_name: str) -> bool:
         return True
-    
+
     async def list_rooms(self) -> list:
         return []
     

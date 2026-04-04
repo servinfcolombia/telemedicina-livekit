@@ -1,7 +1,5 @@
 'use client'
 
-import { ConnectionState } from 'livekit-client'
-
 interface VideoControlsProps {
   isVideoEnabled: boolean
   isAudioEnabled: boolean
@@ -9,7 +7,7 @@ interface VideoControlsProps {
   onToggleAudio: () => void
   onLeave: () => void
   onShowChat: () => void
-  connectionState: ConnectionState
+  connectionState: string
 }
 
 export function VideoControls({
@@ -79,12 +77,12 @@ export function VideoControls({
 
         <div className="flex items-center space-x-3">
           <div className="text-gray-400 text-sm">
-            {connectionState === ConnectionState.Connected ? (
+            {connectionState === 'connected' ? (
               <span className="flex items-center">
                 <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
                 Conectado
               </span>
-            ) : connectionState === ConnectionState.Connecting ? (
+            ) : connectionState === 'connecting' ? (
               <span>Conectando...</span>
             ) : (
               <span>Desconectado</span>

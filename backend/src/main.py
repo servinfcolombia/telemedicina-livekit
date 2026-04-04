@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from src.core.config import settings
-from src.routers import auth, consultations, fhir, webhooks, ia
+from src.routers import auth, consultations, fhir, webhooks, ia, livekit, recordings
 
 
 @asynccontextmanager
@@ -34,6 +34,8 @@ app.include_router(consultations.router, prefix="/api/v1/consultations", tags=["
 app.include_router(fhir.router, prefix="/fhir", tags=["fhir"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(ia.router, prefix="/api/v1/ia", tags=["ia"])
+app.include_router(livekit.router, prefix="/api/livekit", tags=["livekit"])
+app.include_router(recordings.router, prefix="/api/v1/recordings", tags=["recordings"])
 
 
 @app.get("/")

@@ -1,0 +1,130 @@
+Problema CRÍTICO: Videoconsulta muestra "WebRTC ICE failed" y "could not establish pc connection".
+
+Los logs muestran:
+- Token se genera (status 200) ✅
+- ICE servers: Array(3) se obtienen ✅  
+- Pero WebRTC ICE failed ❌
+
+Ejecuta ESTOS comandos en orden y muestra los resultados EXACTOS:
+
+## COMANDO 1 - Verificar CoTURN:
+docker ps --filter "name=turn" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+Si NO está corriendo:
+docker compose up -d turn
+Start-Sleep -Seconds 10
+docker ps --filter "name=turn"
+
+## COMANDO 2 - Ver configuración de CoTURN:
+docker exec (docker ps --filter "name=turn" --format "{{.ID}}") cat /etc/turnserver.conf 2>$null
+
+O si no existe ese archivo:
+docker logs (docker ps --filter "name=turn" --format "{{.ID}}") --tail 30
+
+## COMANDO 3 - Verificar puerto 3478:
+netstat -ano | findstr "3478"
+
+Si NO muestra nada escuchando:
+netsh advfirewall firewall add rule name="CoTURN UDP" dir=in action=allow protocol=UDP localport=3478
+netsh advfirewall firewall add rule name="CoTURN TCP" dir=in action=allow protocol=TCP localport=3478
+netstat -ano | findstr "3478"
+
+## COMANDO 4 - Probar endpoint ICE servers:
+curl http://localhost:8000/api/livekit/ice-servers
+
+Si da error 404 o no responde, el endpoint no existe. Créalo en backend/src/routers/livekit.py:
+
+from fastapi import APIRouter
+from ..core.config import settings
+
+router = APIRouter()
+
+@router.get("/ice-servers")
+async def get_ice_servers():
+    return {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {
+                "urls": ["turn:localhost:3478", "turn:127.0.0.1:3478"],
+                "username": settings.LIVEKIT_API_KEY,
+                "credential": settings.LIVEKIT_API_SECRET
+            }
+        ]
+    }
+
+## COMANDO 5 - Verificar credenciales coinciden:
+Write-Host "=== Backend .env ==="
+cat D:\hipocrates\backend\.env | findstr "LIVEKIT"
+
+Write-Host "`n=== CoTURN config ==="
+docker exec (docker ps --filter "name=turn" --format "{{.ID}}") cat /etc/turnserver.conf 2>$null | findstr "user"
+
+## COMANDO 6 - Reiniciar servicios:
+Write-Host "Reiniciando CoTURN..."
+docker compose restart turn
+Start-Sleep -Seconds 5
+
+Write-Host "`nVerificando CoTURN..."
+docker logs (docker ps --filter "name=turn" --format "{{.ID}}") --tail 10
+
+## COMANDO 7 - Generar código de prueba para navegador:
+$testCode = @"
+// Probar ICE servers en consola del navegador
+fetch('http://localhost:8000/api/livekit/ice-servers')
+  .then(r => {
+    console.log('Status:', r.status);
+    return r.json();
+  })
+  .then(data => {
+    console.log('ICE Servers completos:', JSON.stringify(data, null, 2));
+    
+    if (!data.iceServers || data.iceServers.length === 0) {
+      console.error('❌ NO hay ICE servers');
+      return;
+    }
+    
+    console.log('✅ Número de servers:', data.iceServers.length);
+    data.iceServers.forEach((s, i) => {
+      console.log(\`Server \${i}:\`, s.urls);
+      if (s.username) console.log('  Username:', s.username);
+      if (s.credential) console.log('  Credential:', '***SET***');
+    });
+    
+    // Probar conexión WebRTC real
+    const pc = new RTCPeerConnection({
+      iceServers: data.iceServers
+    });
+    
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState);
+    };
+    
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer))
+      .then(() => {
+        setTimeout(() => {
+          console.log('ICE state final:', pc.iceConnectionState);
+          pc.close();
+        }, 3000);
+      });
+  })
+  .catch(err => console.error('Error:', err));
+"@
+
+Write-Host "`n=== CÓDIGO DE PRUEBA PARA NAVEGADOR ==="
+Write-Host "Copia y pega esto en la consola del navegador (F12):"
+Write-Host $testCode
+
+## RESULTADOS ESPERADOS:
+
+Después de ejecutar todos los comandos, muestra:
+
+1. ¿CoTURN está corriendo? (Sí/No)
+2. ¿Puerto 3478 está escuchando? (Sí/No)  
+3. ¿Endpoint /api/livekit/ice-servers responde? (Sí/No + JSON completo)
+4. ¿Las credenciales coinciden entre backend y CoTURN? (Sí/No)
+5. ¿Qué muestra el test de WebRTC en el navegador?
+
+Con esa información, identifica la causa raíz EXACTA y aplica la corrección específica.
+
+NO asumas nada - ejecuta cada comando y muestra el resultado real.

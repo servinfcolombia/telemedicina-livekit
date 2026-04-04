@@ -1,6 +1,5 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
-import json
 import uuid
 import re
 
@@ -108,13 +107,16 @@ class FHIRMapper:
         patient_id: str,
         practitioner_id: str,
         consultation_id: str,
-        start_time: datetime,
-        end_time: Optional[datetime] = None
+        start_time: Union[str, datetime],
+        end_time: Optional[Union[str, datetime]] = None
     ) -> Dict[str, Any]:
         entities = self.extract_entities(transcription)
         
         encounter_id = f"enc-{consultation_id}"
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now().isoformat()
+        
+        start_dt = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time)
+        end_dt = end_time if isinstance(end_time, datetime) else (datetime.fromisoformat(end_time) if end_time else datetime.now())
         
         bundle = {
             "resourceType": "Bundle",
@@ -141,8 +143,8 @@ class FHIRMapper:
                 {"individual": {"reference": f"Practitioner/{practitioner_id}"}}
             ],
             "period": {
-                "start": start_time.isoformat(),
-                "end": (end_time or datetime.utcnow()).isoformat()
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat()
             }
         }
         
@@ -282,5 +284,5 @@ def create_fhir_bundle_from_transcription(
         patient_id=patient_id,
         practitioner_id=practitioner_id,
         consultation_id=consultation_id,
-        start_time=datetime.utcnow()
+        start_time=datetime.now()
     )

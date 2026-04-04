@@ -16,13 +16,19 @@ class Settings(BaseSettings):
 
     LIVEKIT_URL: str = "http://localhost:7880"
     LIVEKIT_API_KEY: str = "devkey"
-    LIVEKIT_API_SECRET: str = "secret"
+    LIVEKIT_API_SECRET: str = "mysecret123"
 
     REDIS_URL: str = "redis://localhost:6379"
 
     OPENEMR_FHIR_URL: str = "http://localhost:8300/fhir"
     OPENEMR_CLIENT_ID: str = ""
     OPENEMR_CLIENT_SECRET: str = ""
+
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_SECURE: bool = False
+    MINIO_BUCKET_NAME: str = "recordings"
 
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 

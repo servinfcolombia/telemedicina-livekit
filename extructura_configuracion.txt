@@ -1,4 +1,4 @@
-Estructura de Configuración
+Estructura de Configuraciónopcio
 
 telemedicina-livekit/
 ├── .opencode/

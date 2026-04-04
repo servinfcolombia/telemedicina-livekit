@@ -15,3 +15,9 @@ def auth_token(client):
         data={"username": "test@example.com", "password": "password123"}
     )
     return response.json()["access_token"]
+
+
+@pytest.fixture
+def doctor_token(client):
+    from src.core.security import create_access_token
+    return create_access_token(data={"sub": "doctor_001", "role": "doctor"})

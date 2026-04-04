@@ -1,5 +1,5 @@
 import pytest
-from backend.src.services.fhir_mapper import FHIRMapper, create_fhir_bundle_from_transcription
+from src.services.fhir_mapper import FHIRMapper, create_fhir_bundle_from_transcription
 
 
 class TestFHIRMapper:

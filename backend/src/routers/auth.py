@@ -61,10 +61,17 @@ async def register(user: UserCreate):
 
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if "doctor" in form_data.username.lower():
+        user_role = "doctor"
+    elif "admin" in form_data.username.lower():
+        user_role = "admin"
+    else:
+        user_role = "patient"
+    
     user_data = {
         "id": "user_001",
         "email": form_data.username,
-        "role": "patient",
+        "role": user_role,
         "hashed_password": get_password_hash("password123"),
     }
     

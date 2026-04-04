@@ -7,11 +7,8 @@ services:
       - "7881:7881"
       - "7882:7882/udp"
       - "7888:7888"
-    environment:
-      - LIVEKIT_KEYS=${LIVEKIT_API_KEY:-devkey}${LIVEKIT_API_SECRET:-secret}
-      - LIVEKIT_CONFIG_FILE=/etc/livekit.yaml
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: >
+      --keys "APIUTCtpP7uaVRG: A3xGzgKfgyMejcdXCtOnyXdSN2dfgDz6T4OeQPNUi0EC"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:7880/health"]
@@ -42,7 +39,7 @@ services:
     image: postgres:15-alpine
     container_name: postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-telemedicina}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
@@ -78,6 +75,42 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - telemedicina
+
+  jitsi:
+    image: jitsi/web:latest
+    container_name: jitsi
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "10000:10000/udp"
+    environment:
+      - JICOFO_AUTH_PASSWORD=secretpassword
+      - JVB_AUTH_PASSWORD=secretpassword
+      - JIBRI_XMPP_PASSWORD=secretpassword
+      - JIBRI_RECORDER_PASSWORD=secretpassword
+      - PUBLIC_URL=https://localhost:8443
+      - TZ=America/Bogota
+    volumes:
+      - ./jitsi/config:/config
+      - ./jitsi/transcripts:/transcripts
+    restart: unless-stopped
+    networks:
+      - telemedicina
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: whisper
+    ports:
+      - "9002:9000"
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
+      - ASR_LANGUAGE=es
+    volumes:
+      - whisper_models:/root/.cache/whisper
+    restart: unless-stopped
     networks:
       - telemedicina
 
@@ -119,6 +152,7 @@ volumes:
   postgres_data:
   minio_data:
   caddy_data:
+  whisper_models:
 
 networks:
   telemedicina:
