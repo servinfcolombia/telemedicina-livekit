@@ -20,19 +20,16 @@ WHISPER_SERVER_URL = os.getenv("WHISPER_SERVER_URL", "http://localhost:9002/asr"
 def _find_ffmpeg() -> str:
     common_paths = [
         "ffmpeg",
+        "C:\\Users\\Daniela\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1-full_build\\bin\\ffmpeg.exe",
         "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
         "C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe",
-        "C:\\Users\\Daniela\\scoop\\apps\\ffmpeg\\current\\ffmpeg.exe",
     ]
     for path in common_paths:
-        if shutil.which(path) or os.path.exists(path):
+        if os.path.exists(path):
             return path
-    try:
-        result = subprocess.run(["where", "ffmpeg"], capture_output=True, text=True)
-        if result.returncode == 0:
-            return result.stdout.strip().split("\n")[0]
-    except:
-        pass
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
     return "ffmpeg"
 
 

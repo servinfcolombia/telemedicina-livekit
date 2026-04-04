@@ -4,16 +4,18 @@ from contextlib import asynccontextmanager
 
 from src.core.config import settings
 from src.routers import auth, consultations, fhir, webhooks, ia, livekit, recordings
+from src.models.database import engine, Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
     yield
 
 
 app = FastAPI(
     title="Telemedicina API",
-    description="Backend API para plataforma de telemedicina con LiveKit y FHIR",
+    description="Backend API para plataforma de telemedicina con videoconsultas P2P, transcripción y FHIR",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

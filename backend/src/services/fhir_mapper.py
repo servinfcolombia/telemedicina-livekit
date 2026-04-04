@@ -16,8 +16,29 @@ class FHIRMapper:
         "vómito": "422400008",
         "dolor abdominal": "21522001",
         "diarrea": "235595009",
+        "dolor de garganta": "162397003",
+        "dolor de pecho": "29857009",
+        "dificultad para respirar": "267036007",
+        "disnea": "267036007",
+        "fatiga": "84229001",
+        "cansancio": "84229001",
+        "mareo": "103261007",
+        "insomnio": "16114001",
+        "ansiedad": "48694002",
+        "depresión": "35489007",
+        "dolor articular": "57676002",
+        "dolor muscular": "68962001",
+        "erupción cutánea": "271807003",
+        "estreñimiento": "14760008",
+        "pérdida de apetito": "79890006",
+        "palpitaciones": "80313002",
+        "edema": "267038008",
+        "hinchazón": "267038008",
+        "vacunación": "33879002",
+        "control prenatal": "445273001",
+        "chequeo general": "410620009",
     }
-    
+
     RXNORM_CODES = {
         "ibuprofeno": "5640",
         "paracetamol": "161",
@@ -25,14 +46,50 @@ class FHIRMapper:
         "amoxicilina": "2670",
         "metformina": "860974",
         "losartán": "197884",
+        "omeprazol": "7646",
+        "atorvastatina": "83367",
+        "enalapril": "3827",
+        "azitromicina": "2662",
+        "ciprofloxacino": "2551",
+        "diclofenaco": "3355",
+        "naproxeno": "7252",
+        "loratadina": "6485",
+        "cetirizina": "25789",
+        "prednisona": "8640",
+        "salbutamol": "9512",
+        "levotiroxina": "10582",
+        "aspirina": "1191",
+        "dexametasona": "3264",
     }
-    
+
     LOINC_CODES = {
         "presión arterial": "85354-9",
         "frecuencia cardíaca": "8867-4",
         "temperatura": "8310-5",
         "frecuencia respiratoria": "9279-1",
         "saturación": "2708-6",
+        "peso": "29463-7",
+        "talla": "8302-2",
+        "glucosa": "2339-0",
+        "colesterol": "2093-3",
+        "hemoglobina": "718-7",
+    }
+
+    PROCEDURE_CODES = {
+        "vacunación": "33879002",
+        "vacuna": "33879002",
+        "inyección": "76601001",
+        "curación": "387713003",
+        "sutura": "225358003",
+        "electrocardiograma": "29303009",
+        "ecografía": "268400002",
+        "radiografía": "399208008",
+        "análisis de sangre": "26604007",
+        "examen de orina": "252381006",
+        "consulta médica": "185349003",
+        "examen físico": "5880005",
+        "control prenatal": "445273001",
+        "chequeo": "410620009",
     }
 
     def __init__(self):
@@ -81,7 +138,16 @@ class FHIRMapper:
                         "value": value,
                         "system": "http://loinc.org"
                     })
-        
+
+        for procedure, code in self.PROCEDURE_CODES.items():
+            if procedure in transcription_lower:
+                entities["procedures"].append({
+                    "code": code,
+                    "display": procedure.title(),
+                    "text": procedure,
+                    "system": "http://snomed.info/sct"
+                })
+
         return entities
 
     def _extract_value(self, transcription: str, observation: str) -> Optional[float]:
@@ -241,7 +307,32 @@ class FHIRMapper:
                     }
                 }
             })
-        
+
+        for i, procedure in enumerate(entities["procedures"]):
+            proc_id = f"proc-{consultation_id}-{i}"
+            bundle["entry"].append({
+                "fullUrl": f"urn:uuid:{proc_id}",
+                "resource": {
+                    "resourceType": "Procedure",
+                    "id": proc_id,
+                    "status": "completed",
+                    "code": {
+                        "coding": [{
+                            "system": procedure["system"],
+                            "code": procedure["code"],
+                            "display": procedure["display"]
+                        }],
+                        "text": procedure["text"]
+                    },
+                    "subject": {"reference": f"Patient/{patient_id}"},
+                    "encounter": {"reference": f"Encounter/{encounter_id}"},
+                    "performedDateTime": timestamp,
+                    "performer": [{
+                        "actor": {"reference": f"Practitioner/{practitioner_id}"}
+                    }]
+                }
+            })
+
         return bundle
 
     def validate_fhir(self, bundle: Dict[str, Any]) -> tuple[bool, List[str]]:

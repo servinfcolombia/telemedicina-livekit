@@ -63,6 +63,12 @@ export default function ConsultationsPage() {
         <h1 className="text-3xl font-bold text-gray-900">Mis Consultas</h1>
         <div className="flex space-x-3">
           <button
+            onClick={() => router.push('/fhir')}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
+          >
+            FHIR
+          </button>
+          <button
             onClick={() => router.push('/transcriptions')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >

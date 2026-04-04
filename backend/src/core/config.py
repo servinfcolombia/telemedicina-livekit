@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
 
-    DATABASE_URL: str = "postgresql://telemedicina:changeme@localhost:5432/telemedicina"
+    DATABASE_URL: str = "postgresql://telemedicina:6cc4fe60b2f494cb8ebc2b23300942b4@localhost:5433/telemedicina"
 
     SECRET_KEY: str = "changeme-please-use-secure-random-secret-key"
     ALGORITHM: str = "HS256"
@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     class Config:
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

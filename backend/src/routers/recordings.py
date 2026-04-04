@@ -14,6 +14,10 @@ import threading
 from src.core.security import get_current_user
 from src.services.minio_client import get_minio_client, ensure_bucket_exists
 from src.core.config import settings
+from src.models.database import get_db
+from src.models.consultation import Recording, Transcription
+from sqlalchemy.orm import Session
+from src.core.config import settings
 
 router = APIRouter()
 
@@ -42,11 +46,13 @@ async def upload_recording(
     started_at: str = Form(...),
     duration_seconds: int = Form(0),
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     file_content = await file.read()
     file_size = len(file_content)
 
     object_name = f"{consultation_id}/{uuid.uuid4().hex}_{file.filename or 'recording.webm'}"
+    local_path = None
 
     try:
         ensure_bucket_exists()
@@ -59,6 +65,8 @@ async def upload_recording(
             content_type=file.content_type or "audio/webm",
         )
         print(f"Grabación guardada en MinIO: {object_name}")
+        storage_type = "minio"
+        stored_path = object_name
     except Exception as e:
         print(f"Error guardando en MinIO, usando almacenamiento local: {e}")
         traceback.print_exc()
@@ -69,6 +77,20 @@ async def upload_recording(
         with open(local_path, "wb") as f:
             f.write(file_content)
         print(f"Grabación guardada localmente: {local_path}")
+        storage_type = "local"
+        stored_path = local_path
+
+    recording = Recording(
+        consultation_id=consultation_id,
+        file_name=object_name,
+        file_path=stored_path,
+        file_size=file_size,
+        duration_seconds=duration_seconds,
+        storage_type=storage_type,
+        created_by=current_user["user_id"],
+    )
+    db.add(recording)
+    db.commit()
 
     threading.Thread(
         target=_transcribe_recording_sync,
@@ -91,6 +113,8 @@ def _transcribe_recording_sync(file_content: bytes, consultation_id: str, user_i
     """Transcribe recording in background thread after upload."""
     import tempfile
     from src.services.whisper_transcriber import transcriber as whisper_transcriber
+    from src.models.database import SessionLocal
+    from src.models.consultation import Transcription
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
@@ -100,21 +124,86 @@ def _transcribe_recording_sync(file_content: bytes, consultation_id: str, user_i
         print(f"Iniciando transcripción para {consultation_id}...")
         result = whisper_transcriber.transcribe(tmp_path)
 
+        transcription_text = result.text
+        segments_json = json.dumps(result.segments) if result.segments else None
+        fhir_bundle_json = None
+        fhir_entities_json = None
+        fhir_valid = False
+
+        if transcription_text and not transcription_text.startswith("Error"):
+            from src.services.fhir_mapper import FHIRMapper
+            mapper = FHIRMapper()
+            entities = mapper.extract_entities(transcription_text)
+
+            total_entities = (
+                len(entities["conditions"])
+                + len(entities["medications"])
+                + len(entities["observations"])
+                + len(entities["procedures"])
+            )
+
+            if total_entities > 0:
+                bundle = mapper.map_to_fhir(
+                    transcription=transcription_text,
+                    patient_id="patient_unknown",
+                    practitioner_id=user_id,
+                    consultation_id=consultation_id,
+                    start_time=datetime.now(),
+                )
+                is_valid, errors = mapper.validate_fhir(bundle)
+                fhir_bundle_json = json.dumps(bundle)
+                fhir_entities_json = json.dumps(entities)
+                fhir_valid = is_valid
+                print(f"FHIR extraído para {consultation_id}: {total_entities} entidades")
+
+        db = SessionLocal()
+        try:
+            existing = db.query(Transcription).filter(Transcription.consultation_id == consultation_id).first()
+            if existing:
+                existing.transcription_text = transcription_text
+                existing.language = result.language
+                existing.segments = segments_json
+                existing.fhir_bundle = fhir_bundle_json
+                existing.fhir_entities = fhir_entities_json
+                existing.fhir_valid = fhir_valid
+            else:
+                transcription = Transcription(
+                    consultation_id=consultation_id,
+                    transcription_text=transcription_text,
+                    language=result.language,
+                    segments=segments_json,
+                    fhir_bundle=fhir_bundle_json,
+                    fhir_entities=fhir_entities_json,
+                    fhir_valid=fhir_valid,
+                    created_by=user_id,
+                    reviewed=False,
+                )
+                db.add(transcription)
+            db.commit()
+        finally:
+            db.close()
+
         transcription_file = os.path.join(TRANSCRIPTIONS_DIR, f"{consultation_id}.json")
         transcription_data = {
             "consultation_id": consultation_id,
-            "transcription": result.text,
+            "transcription": transcription_text,
             "language": result.language,
             "segments": result.segments,
             "created_at": datetime.now().isoformat(),
             "created_by": user_id,
             "reviewed": False,
         }
+        if fhir_bundle_json:
+            transcription_data["fhir_bundle"] = json.loads(fhir_bundle_json)
+        if fhir_entities_json:
+            transcription_data["fhir_entities"] = json.loads(fhir_entities_json)
+        if fhir_valid:
+            transcription_data["fhir_valid"] = fhir_valid
 
         with open(transcription_file, "w", encoding="utf-8") as f:
             json.dump(transcription_data, f, ensure_ascii=False, indent=2)
 
-        print(f"Transcripción completada para {consultation_id}: {len(result.text)} caracteres")
+        print(f"Transcripción completada para {consultation_id}: {len(transcription_text)} caracteres")
 
     except Exception as e:
         print(f"Error transcribiendo {consultation_id}: {e}")

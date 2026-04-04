@@ -8,7 +8,11 @@ import json
 
 from src.core.security import get_current_user, require_role
 from src.services.whisper_transcriber import transcriber
+from src.services.fhir_mapper import FHIRMapper
 from src.core.config import settings
+from src.models.database import get_db
+from src.models.consultation import Transcription
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -27,6 +31,7 @@ class TranscriptionResponse(BaseModel):
 class FHIRExtractionResponse(BaseModel):
     bundle: Dict[str, Any]
     confidence: float = 0.85
+    entities: Dict[str, List[Dict[str, Any]]]
 
 
 @router.post("/transcribe", response_model=TranscriptionResponse)
@@ -75,48 +80,147 @@ async def extract_fhir_entities(
     transcription: str = Form(...),
     patient_id: str = Form(...),
     practitioner_id: str = Form(...),
+    consultation_id: str = Form(""),
     current_user: dict = Depends(require_role(["doctor", "admin"])),
 ):
-    bundle = {
-        "resourceType": "Bundle",
-        "type": "collection",
-        "timestamp": datetime.now().isoformat(),
-        "entry": [
-            {
-                "resource": {
-                    "resourceType": "Encounter",
-                    "status": "finished",
-                    "class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "VR", "display": "virtual"},
-                    "subject": {"reference": f"Patient/{patient_id}"},
-                    "participant": [{"individual": {"reference": f"Practitioner/{practitioner_id}"}}],
-                }
-            }
-        ]
-    }
+    mapper = FHIRMapper()
+    entities = mapper.extract_entities(transcription)
 
-    return FHIRExtractionResponse(bundle=bundle, confidence=0.85)
+    bundle = mapper.map_to_fhir(
+        transcription=transcription,
+        patient_id=patient_id,
+        practitioner_id=practitioner_id,
+        consultation_id=consultation_id or "unknown",
+        start_time=datetime.now(),
+    )
+
+    is_valid, errors = mapper.validate_fhir(bundle)
+
+    total_entities = (
+        len(entities["conditions"])
+        + len(entities["medications"])
+        + len(entities["observations"])
+        + len(entities["procedures"])
+    )
+    confidence = max(0.5, min(1.0, total_entities * 0.2))
+
+    return FHIRExtractionResponse(
+        bundle=bundle,
+        confidence=round(confidence, 2),
+        entities=entities,
+    )
+
+
+@router.get("/fhir/{consultation_id}")
+async def get_fhir_bundle(
+    consultation_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    transcription = db.query(Transcription).filter(Transcription.consultation_id == consultation_id).first()
+
+    transcription_text = None
+    fhir_entities = None
+    fhir_bundle = None
+
+    if transcription and transcription.transcription_text:
+        transcription_text = transcription.transcription_text
+
+        if transcription.fhir_entities:
+            try:
+                fhir_entities = json.loads(transcription.fhir_entities)
+            except:
+                pass
+        if transcription.fhir_bundle:
+            try:
+                fhir_bundle = json.loads(transcription.fhir_bundle)
+            except:
+                pass
+
+    if not transcription_text:
+        transcription_file = os.path.join(TRANSCRIPTIONS_DIR, f"{consultation_id}.json")
+        if os.path.exists(transcription_file):
+            with open(transcription_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            transcription_text = data.get("transcription", "")
+            fhir_entities = data.get("fhir_entities")
+            fhir_bundle = data.get("fhir_bundle")
+
+    if not transcription_text or transcription_text.startswith("Error"):
+        return {"bundle": None, "entities": None}
+
+    if not fhir_entities:
+        mapper = FHIRMapper()
+        fhir_entities = mapper.extract_entities(transcription_text)
+
+    total_entries = (
+        len(fhir_entities.get("conditions", []))
+        + len(fhir_entities.get("medications", []))
+        + len(fhir_entities.get("observations", []))
+        + len(fhir_entities.get("procedures", []))
+    )
+
+    if not fhir_bundle and total_entries > 0:
+        mapper = FHIRMapper()
+        fhir_bundle = mapper.map_to_fhir(
+            transcription=transcription_text,
+            patient_id="unknown",
+            practitioner_id="unknown",
+            consultation_id=consultation_id,
+            start_time=datetime.now(),
+        )
+
+    return {
+        "bundle": fhir_bundle,
+        "entities": fhir_entities,
+        "total_entities": total_entries,
+    }
 
 
 @router.get("/transcriptions/{consultation_id}")
 async def get_transcription(
     consultation_id: str,
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    transcription_file = os.path.join(TRANSCRIPTIONS_DIR, f"{consultation_id}.json")
+    transcription = db.query(Transcription).filter(Transcription.consultation_id == consultation_id).first()
 
-    if not os.path.exists(transcription_file):
-        return {
-            "consultation_id": consultation_id,
-            "transcription": None,
-            "fhir_bundle": None,
-            "reviewed": False,
-            "created_at": None,
-        }
+    if not transcription:
+        transcription_file = os.path.join(TRANSCRIPTIONS_DIR, f"{consultation_id}.json")
+        if not os.path.exists(transcription_file):
+            return {
+                "consultation_id": consultation_id,
+                "transcription": None,
+                "fhir_bundle": None,
+                "reviewed": False,
+                "created_at": None,
+            }
+        with open(transcription_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
 
-    with open(transcription_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    result = {
+        "consultation_id": transcription.consultation_id,
+        "transcription": transcription.transcription_text,
+        "language": transcription.language,
+        "segments": json.loads(transcription.segments) if transcription.segments else [],
+        "created_at": transcription.created_at.isoformat() if transcription.created_at else None,
+        "created_by": transcription.created_by,
+        "reviewed": transcription.reviewed,
+        "approved": transcription.approved,
+        "reviewed_by": transcription.reviewed_by,
+        "reviewed_at": transcription.reviewed_at.isoformat() if transcription.reviewed_at else None,
+        "corrections": transcription.corrections,
+    }
 
-    return data
+    if transcription.fhir_bundle:
+        result["fhir_bundle"] = json.loads(transcription.fhir_bundle)
+    if transcription.fhir_entities:
+        result["fhir_entities"] = json.loads(transcription.fhir_entities)
+    if transcription.fhir_valid is not None:
+        result["fhir_valid"] = transcription.fhir_valid
+
+    return result
 
 
 @router.get("/pending-review")
@@ -144,24 +248,30 @@ async def review_transcription(
     approved: bool = Form(...),
     corrections: Optional[str] = Form(None),
     current_user: dict = Depends(require_role(["doctor"])),
+    db: Session = Depends(get_db),
 ):
+    transcription = db.query(Transcription).filter(Transcription.consultation_id == consultation_id).first()
+
+    if transcription:
+        transcription.reviewed = True
+        transcription.approved = approved
+        transcription.reviewed_by = current_user["user_id"]
+        transcription.reviewed_at = datetime.now()
+        if corrections:
+            transcription.corrections = corrections
+        db.commit()
+
     transcription_file = os.path.join(TRANSCRIPTIONS_DIR, f"{consultation_id}.json")
-
-    if not os.path.exists(transcription_file):
-        raise HTTPException(status_code=404, detail="Transcripción no encontrada")
-
-    with open(transcription_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    data["reviewed"] = True
-    data["approved"] = approved
-    data["reviewed_by"] = current_user["user_id"]
-    data["reviewed_at"] = datetime.now().isoformat()
-
-    if corrections:
-        data["corrections"] = corrections
-
-    with open(transcription_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    if os.path.exists(transcription_file):
+        with open(transcription_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["reviewed"] = True
+        data["approved"] = approved
+        data["reviewed_by"] = current_user["user_id"]
+        data["reviewed_at"] = datetime.now().isoformat()
+        if corrections:
+            data["corrections"] = corrections
+        with open(transcription_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     return {"message": "Transcripción revisada", "approved": approved}
