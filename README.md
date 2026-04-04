@@ -1,13 +1,15 @@
-# Telemedicina LiveKit
+# Telemedicina - Plataforma de Videoconsultas
 
-Plataforma de telemedicina con videoconsultas en tiempo real, transcripción automática e integración FHIR.
+Plataforma de telemedicina con videoconsultas en tiempo real (P2P), grabación automática de audio, transcripción con Whisper e integración FHIR.
 
 ## Características
 
-- **Videoconsultas en Tiempo Real**: WebRTC con LiveKit
-- **Transcripción Automática**: Whisper para STT en español
-- **Extracción FHIR**: Entidades clínicas automáticas
-- **Seguridad HIPAA**: Cifrado, auditoría, RBAC
+- **Videoconsultas P2P**: WebRTC con PeerJS (sin servidor de medios)
+- **Grabación Automática**: Audio de cada consulta se graba automáticamente
+- **Transcripción Whisper**: Transcripción automática en español vía Docker
+- **Extracción FHIR**: Entidades clínicas automáticas desde transcripciones
+- **Revisión de Transcripciones**: Flujo de aprobación/corrección por el doctor
+- **Seguridad HIPAA**: Cifrado, RBAC, tokens JWT
 - **Accesibilidad WCAG 2.1 AA**
 
 ## Arquitectura
@@ -17,14 +19,14 @@ Plataforma de telemedicina con videoconsultas en tiempo real, transcripción aut
 │  Frontend   │────▶│   Backend   │────▶│  PostgreSQL│
 │  Next.js    │     │   FastAPI   │     │             │
 └─────────────┘     └─────────────┘     └─────────────┘
-       │                   │                   │
-       │             ┌─────┴─────┐            │
-       │             │           │            │
-       ▼             ▼           ▼            ▼
-┌──────────┐   ┌────────┐  ┌────────┐   ┌────────┐
-│  LiveKit  │   │ Redis  │  │  MinIO │   │ OpenEMR│
-│  (WebRTC) │   │  Queue │  │Storage │   │  FHIR  │
-└──────────┘   └────────┘  └────────┘   └────────┘
+       ││                  ││                  │
+       ││             ┌────┴┐            ┌────┴────┐
+       ││             │     │            │         │
+       ▼▼             ▼     ▼            ▼         ▼
+ ┌──────────┐   ┌────────┐ ┌──────┐  ┌──────┐ ┌────────┐
+ │  PeerJS  │   │ Redis  │ │MinIO │  │Whisper│ │ OpenEMR│
+ │  (WebRTC)│   │  Queue │ │(S3)  │  │(Docker│ │  FHIR  │
+ └──────────┘   └────────┘ └──────┘  └───────┘ └────────┘
 ```
 
 ## Inicio Rápido
@@ -33,13 +35,13 @@ Plataforma de telemedicina con videoconsultas en tiempo real, transcripción aut
 
 ```bash
 # 1. Clonar repositorio
-git clone https://github.com/telemedicina/telemedicina-livekit.git
+git clone https://github.com/servinfcolombia/telemedicina-livekit.git
 cd telemedicina-livekit
 
 # 2. Copiar variables de entorno
-cp .env.example .env
+cp .env.example .env  # o crear .env manualmente
 
-# 3. Iniciar servicios
+# 3. Iniciar servicios Docker (PostgreSQL, Redis, MinIO, Whisper)
 docker compose up -d
 
 # 4. Instalar dependencias backend
@@ -51,83 +53,142 @@ cd ../frontend
 npm install
 
 # 6. Iniciar desarrollo
-# Backend: uvicorn src.main:app --reload
-# Frontend: npm run dev
+# Terminal 1 - Backend:
+cd backend
+python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2 - Frontend:
+cd frontend
+npm run build
+npm run start
 ```
 
-### Producción
+### Credenciales de Prueba
 
-Ver [docs/deployment.md](docs/deployment.md)
+| Email | Rol | Contraseña |
+|-------|-----|------------|
+| doctor@test.com | doctor | password123 |
+| patient@test.com | patient | password123 |
+
+### Flujo de Prueba
+
+1. Abrir http://localhost:3000
+2. Login con `doctor@test.com` / `password123`
+3. Crear nueva consulta o unirse a una existente
+4. La videollamada inicia con grabación y transcripción automática
+5. Al salir, la grabación se guarda y la transcripción se genera
+6. Ver transcripciones en `/transcriptions` y grabaciones en `/recordings`
 
 ## Estructura del Proyecto
 
 ```
 telemedicina-livekit/
-├── backend/              # API FastAPI
+├── backend/                    # API FastAPI
 │   └── src/
-│       ├── routers/      # Endpoints
-│       ├── models/       # Modelos DB
-│       ├── services/     # Lógica de negocio
-│       └── middleware/   # Auditoría
-├── frontend/             # Next.js 14
+│       ├── routers/
+│       │   ├── auth.py         # Autenticación JWT + roles
+│       │   ├── consultations.py # CRUD consultas
+│       │   ├── recordings.py   # Grabaciones de audio
+│       │   ├── ia.py           # Transcripción + FHIR
+│       │   └── livekit.py      # Legacy (no usado)
+│       └── services/
+│           ├── minio_client.py      # Almacenamiento S3
+│           └── whisper_transcriber.py # Transcripción Whisper
+├── frontend/                   # Next.js 14
 │   └── src/
-│       ├── components/   # Componentes React
-│       ├── hooks/       # Custom hooks
-│       └── lib/         # Utilidades
-├── agents/              # Workers IA
-├── charts/              # Helm charts
-├── k8s/                 # Kubernetes manifests
-├── scripts/             # Scripts automation
-├── monitoring/           # Prometheus + Grafana
-├── docs/                # Documentación
-└── docker-compose.yml   # Desarrollo local
+│       ├── app/
+│       │   ├── auth/signin/    # Login
+│       │   ├── consultations/  # Lista y creación
+│       │   ├── room/[roomName]/ # Sala de video
+│       │   ├── recordings/     # Grabaciones
+│       │   └── transcriptions/ # Transcripciones
+│       ├── components/video/
+│       │   ├── VideoRoom.tsx   # PeerJS + grabación
+│       │   └── Controls.tsx    # Controles de video
+│       └── lib/
+│           └── auth.ts         # NextAuth config
+├── agents/                     # Workers IA
+├── docker-compose.yml          # Servicios locales
+└── CONTEXTO.md                 # Documentación detallada
 ```
-
-## Configuración OpenCode
-
-El proyecto incluye configuración para ejecución con OpenCode:
-
-```bash
-# Iniciar sesión
-opencode
-
-# Ejecutar fase específica
-@infra-setup Configurar infraestructura
-@backend-api Desarrollar backend
-@frontend-ui Desarrollar frontend
-@ai-pipeline Configurar IA
-@security-audit Auditoría de seguridad
-```
-
-Ver [.opencode/](.opencode/) para configuración detallada.
 
 ## API Endpoints
 
+### Autenticación
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| POST | /api/v1/auth/login | Autenticación |
+| POST | /api/v1/auth/login | Iniciar sesión |
 | POST | /api/v1/auth/register | Registro |
-| GET | /fhir/Patient | Listar pacientes |
-| POST | /fhir/Encounter | Crear encuentro |
-| GET | /api/v1/consultations | Listar consultas |
+
+### Consultas
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | /api/v1/consultations/ | Listar consultas |
+| POST | /api/v1/consultations/ | Crear consulta |
+| PATCH | /api/v1/consultations/{id}/start | Iniciar consulta |
+| PATCH | /api/v1/consultations/{id}/end | Finalizar consulta |
+
+### Grabaciones
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | /api/v1/recordings/ | Subir grabación |
+| GET | /api/v1/recordings/list-all | Listar todas |
+| GET | /api/v1/recordings/{id}/{file} | Descargar |
+
+### IA / Transcripción
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
 | POST | /api/v1/ia/transcribe | Transcribir audio |
 | POST | /api/v1/ia/extract-fhir | Extraer entidades FHIR |
+| GET | /api/v1/ia/transcriptions/{id} | Obtener transcripción |
+| POST | /api/v1/ia/{id}/review | Aprobar/rechazar |
 
 ## Tecnologías
 
-- **Frontend**: Next.js 14, TypeScript, Tailwind CSS, LiveKit SDK
-- **Backend**: FastAPI, SQLAlchemy, PostgreSQL
-- **IA**: Whisper, LLM para extracción FHIR
-- **Infra**: Docker, Kubernetes, Helm
-- **Monitoreo**: Prometheus, Grafana
+| Capa | Tecnología |
+|------|-----------|
+| **Frontend** | Next.js 14, TypeScript, Tailwind CSS, PeerJS |
+| **Backend** | FastAPI, Python 3.13, httpx |
+| **Video** | PeerJS (WebRTC P2P) |
+| **Transcripción** | Whisper Docker (onerahmet/openai-whisper-asr-webservice) |
+| **Almacenamiento** | MinIO (S3 compatible) con fallback local |
+| **Base de datos** | PostgreSQL |
+| **Cache/Queue** | Redis |
+| **Infra** | Docker, Docker Compose |
+
+## Servicios Docker
+
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| PostgreSQL | 5433 | Base de datos |
+| Redis | 6379 | Cache y colas |
+| MinIO | 9000-9001 | Almacenamiento S3 |
+| Whisper | 9002 | Transcripción de audio |
+| Caddy | 80/443 | Reverse proxy |
+
+> **Nota**: LiveKit y CoTURN están en docker-compose pero no se usan actualmente.
 
 ## Seguridad
 
 - TLS 1.3 para todas las comunicaciones
 - JWT con expiración de 15 minutos
-- Cifrado AES-256 en reposo
-- Logs de auditoría HIPAA
+- Cifrado AES-256 en reposo (MinIO)
 - RBAC con roles: admin, doctor, patient
+- Roles detectados por email en el backend
+
+## Evolución del Proyecto
+
+Este proyecto pasó por varias iteraciones de video:
+
+1. **LiveKit** → Descartado por problemas de ICE/TURN (conexión fallida entre Docker y Windows)
+2. **Jitsi Meet** → Descartado porque requiere login de Google/GitHub para crear salas
+3. **PeerJS** → Solución final: WebRTC P2P sin servidor de medios, sin login requerido
+
+La transcripción también evolucionó:
+
+1. **whispercpp (Python)** → Incompatible con Python 3.13
+2. **Web Speech API** → Solo funciona en Chrome/Edge
+3. **Whisper Docker** → Solución final: contenedor independiente, funciona con cualquier navegador
 
 ## Contribuir
 
@@ -139,8 +200,10 @@ Ver [.opencode/](.opencode/) para configuración detallada.
 
 ## Licencia
 
-MIT License - voir [LICENSE](LICENSE) pour plus de détails.
+MIT License - ver [LICENSE](LICENSE) para más detalles.
 
 ---
 
-**Nota**: Este proyecto es un boilerplate/template para proyectos de telemedicina. Antes de usar en producción, asegurar cumplimiento con regulaciones locales de salud.
+**Nota**: Este proyecto es un boilerplate/template para proyectos de telemedicina. Antes de usar en producción, asegurar cumplimiento con regulaciones locales de salud (HIPAA, GDPR, etc.).
+
+**Documentación detallada**: Ver [CONTEXTO.md](CONTEXTO.md) para información completa del historial de cambios, configuración y solución de problemas.
