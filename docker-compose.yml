@@ -1,17 +1,18 @@
 services:
-  livekit:
-    image: livekit/livekit-server:latest
-    container_name: livekit
+  postgres:
+    image: postgres:15-alpine
+    container_name: telemedicina-postgres
     ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "7882:7882/udp"
-      - "7888:7888"
-    command: >
-      --keys "APIUTCtpP7uaVRG: A3xGzgKfgyMejcdXCtOnyXdSN2dfgDz6T4OeQPNUi0EC"
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-telemedicina}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-6cc4fe60b2f494cb8ebc2b23300942b4}
+      - POSTGRES_DB=${POSTGRES_DB:-telemedicina}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:7880/health"]
+      test: ["CMD-SHELL", "pg_isready -U telemedicina"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -20,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: telemedicina-redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -35,37 +36,15 @@ services:
     networks:
       - telemedicina
 
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    ports:
-      - "5433:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-telemedicina}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-      - POSTGRES_DB=${POSTGRES_DB:-telemedicina}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U telemedicina"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - telemedicina
-
   minio:
     image: minio/minio:latest
-    container_name: minio
+    container_name: telemedicina-minio
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-51820dacc70cc90c931125cca6274571}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -78,30 +57,9 @@ services:
     networks:
       - telemedicina
 
-  jitsi:
-    image: jitsi/web:latest
-    container_name: jitsi
-    ports:
-      - "8080:80"
-      - "8443:443"
-      - "10000:10000/udp"
-    environment:
-      - JICOFO_AUTH_PASSWORD=secretpassword
-      - JVB_AUTH_PASSWORD=secretpassword
-      - JIBRI_XMPP_PASSWORD=secretpassword
-      - JIBRI_RECORDER_PASSWORD=secretpassword
-      - PUBLIC_URL=https://localhost:8443
-      - TZ=America/Bogota
-    volumes:
-      - ./jitsi/config:/config
-      - ./jitsi/transcripts:/transcripts
-    restart: unless-stopped
-    networks:
-      - telemedicina
-
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: whisper
+    container_name: telemedicina-whisper
     ports:
       - "9002:9000"
     environment:
@@ -114,45 +72,61 @@ services:
     networks:
       - telemedicina
 
-  coturn:
-    image: coturn/coturn:latest
-    container_name: coturn
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: telemedicina-backend
     ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
+      - "8000:8000"
     environment:
-      - TURN_SECRET_KEY=${TURN_SECRET:-turnsecret}
+      - DATABASE_URL=postgresql://telemedicina:6cc4fe60b2f494cb8ebc2b23300942b4@postgres:5432/telemedicina
+      - SECRET_KEY=${SECRET_KEY:-aad09369a1e0044e016600fd61d83fb16bd60ba1d63050ba2a3a7a1b2e4364d8}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-51820dacc70cc90c931125cca6274571}
+      - MINIO_BUCKET_NAME=recordings
+      - WHISPER_SERVER_URL=http://whisper:9000/asr
+      - REDIS_URL=redis://redis:6379
+      - CORS_ORIGINS=["http://localhost:3000","http://frontend:3000"]
     volumes:
-      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - backend_recordings:/app/recordings
+      - backend_transcriptions:/app/transcriptions
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      whisper:
+        condition: service_started
     networks:
       - telemedicina
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: caddy
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: telemedicina-frontend
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-aad09369a1e0044e016600fd61d83fb16bd60ba1d63050ba2a3a7a1b2e4364d8}
+      - NEXTAUTH_URL=http://localhost:3000
     restart: unless-stopped
     depends_on:
-      - livekit
-      - minio
+      - backend
     networks:
       - telemedicina
 
 volumes:
-  redis_data:
   postgres_data:
+  redis_data:
   minio_data:
-  caddy_data:
   whisper_models:
+  backend_recordings:
+  backend_transcriptions:
 
 networks:
   telemedicina:

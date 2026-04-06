@@ -1,0 +1,42 @@
+# Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+recordings/
+transcriptions/
+models/
+
+# Frontend
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+package-lock.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Docker volumes data
+whisper-server/
+
+# Results
+resultados/
