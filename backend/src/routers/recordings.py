@@ -220,8 +220,21 @@ def _transcribe_recording_sync(file_content: bytes, consultation_id: str, user_i
 @router.get("/list-all", response_model=list[RecordingInfo])
 async def list_all_recordings(
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     recordings = []
+
+    db_recordings = db.query(Recording).order_by(Recording.created_at.desc()).limit(50).all()
+    for rec in db_recordings:
+        recordings.append(RecordingInfo(
+            id=rec.id,
+            consultation_id=rec.consultation_id,
+            file_name=rec.file_name,
+            file_size=rec.file_size,
+            duration_seconds=rec.duration_seconds or 0,
+            uploaded_at=rec.created_at,
+            uploaded_by=rec.created_by,
+        ))
 
     if os.path.exists(LOCAL_RECORDINGS_DIR):
         for consultation_id in os.listdir(LOCAL_RECORDINGS_DIR):
@@ -287,6 +300,39 @@ async def list_recordings(
             ))
 
     return recordings
+
+
+@router.delete("/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recording(
+    recording_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Grabación no encontrada")
+
+    if recording.storage_type == "minio":
+        try:
+            ensure_bucket_exists()
+            client = get_minio_client()
+            client.remove_object(
+                bucket_name=settings.MINIO_BUCKET_NAME,
+                object_name=recording.file_path,
+            )
+            print(f"Grabación eliminada de MinIO: {recording.file_path}")
+        except Exception as e:
+            print(f"Error eliminando de MinIO: {e}")
+    elif recording.storage_type == "local" and os.path.exists(recording.file_path):
+        try:
+            os.unlink(recording.file_path)
+            print(f"Grabación eliminada localmente: {recording.file_path}")
+        except Exception as e:
+            print(f"Error eliminando archivo local: {e}")
+
+    db.delete(recording)
+    db.commit()
+    return None
 
 
 @router.get("/{consultation_id}/{file_name:path}")

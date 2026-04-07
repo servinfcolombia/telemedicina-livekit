@@ -36,10 +36,11 @@ export const authOptions: NextAuthOptions = {
           formData.append('username', credentials.email)
           formData.append('password', credentials.password)
 
-          console.log('Sending to backend:', process.env.NEXT_PUBLIC_API_URL + '/api/v1/auth/login')
+          const apiUrl = process.env.INTERNAL_API_URL || 'http://telemedicina-backend:8000'
+          console.log('Sending to backend:', apiUrl + '/api/v1/auth/login')
           console.log('Form data:', formData.toString())
 
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
+          const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/x-www-form-urlencoded',

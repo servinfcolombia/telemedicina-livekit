@@ -1,490 +1,552 @@
-# Contexto del Proyecto - Telemedicina
+# DOCUMENTACIÓN TÉCNICA - HIPÓCRATES
+## Plataforma de Telemedicina con Videoconsultas, Transcripción IA y Extracción FHIR
 
-## Estado de la Sesión
-
-**Última sesión**: 03/04/2026
-**Directorio de trabajo**: D:\hipocrates
-**Estado actual**: Sistema completo funcionando - Video P2P, grabación, transcripción, FHIR, persistencia PostgreSQL
-
----
-
-## Resumen del Proyecto
-
-Plataforma de telemedicina con:
-- **Videoconsultas P2P** en tiempo real (PeerJS - WebRTC sin servidor de medios)
-- **Grabación automática de audio** de cada consulta (MediaRecorder)
-- **Transcripción automática** con Whisper Docker (`onerahmet/openai-whisper-asr-webservice`)
-- **Extracción FHIR completa** - 4 tipos de entidades: Conditions, Medications, Observations, Procedures
-- **Persistencia en PostgreSQL** - Consultas, transcripciones y grabaciones en base de datos
-- **Revisión de transcripciones** - Flujo de aprobación/corrección por el doctor
-- **Seguridad HIPAA** - JWT, RBAC, cifrado
-- Frontend Next.js 14, Backend FastAPI
+**Última actualización**: 07/04/2026  
+**Estado**: ✅ Producción  
+**Docker**: 6 servicios activos
 
 ---
 
-## Credenciales de Acceso
+## 1. ARQUITECTURA GENERAL
 
-| Email | Rol | Contraseña |
-|-------|-----|------------|
-| doctor@test.com | doctor | password123 |
-| patient@test.com | patient | password123 |
-
----
-
-## Credenciales PostgreSQL
-
-| Parámetro | Valor |
-|-----------|-------|
-| Host | localhost |
-| Puerto | 5433 |
-| Usuario | telemedicina |
-| Contraseña | 6cc4fe60b2f494cb8ebc2b23300942b4 |
-| Base de datos | telemedicina |
-| Tablas | consultations, transcriptions, recordings |
-
----
-
-## Credenciales MinIO
-
-| Parámetro | Valor |
-|-----------|-------|
-| URL | http://localhost:9000 |
-| Usuario | minioadmin |
-| Contraseña | 51820dacc70cc90c931125cca6274571 |
-| Bucket | recordings |
-| Estado | ⚠️ SignatureDoesNotMatch - se usa fallback local |
-
----
-
-## Credenciales Whisper Docker
-
-| Parámetro | Valor |
-|-----------|-------|
-| Imagen | onerahmet/openai-whisper-asr-webservice:latest |
-| Modelo | base (español) |
-| Puerto externo | 9002 |
-| Puerto interno | 9000 |
-| Engine | openai_whisper |
-
----
-
-## Rutas del Frontend
-
-| Ruta | Descripción | Estado |
-|------|-------------|--------|
-| / | Página principal | ✅ |
-| /auth/signin | Login | ✅ |
-| /dashboard | Dashboard del usuario | ✅ |
-| /consultations | Lista de consultas | ✅ |
-| /consultations/new | Crear nueva consulta | ✅ |
-| /recordings | Lista y descarga grabaciones | ✅ |
-| /transcriptions | Lista y revisión de transcripciones | ✅ |
-| /fhir | Visualización de entidades FHIR | ✅ |
-| /room/[roomName] | Sala de videollamada (PeerJS) | ✅ |
-
----
-
-## Endpoints API
-
-### Autenticación
-| Método | Endpoint | Descripción | Auth |
-|--------|----------|-------------|------|
-| POST | /api/v1/auth/login | Iniciar sesión (form-data: username, password) | No |
-| POST | /api/v1/auth/register | Registrar usuario | No |
-| GET | /api/v1/auth/me | Info del usuario actual | Sí |
-| POST | /api/v1/auth/logout | Cerrar sesión | Sí |
-| POST | /api/v1/auth/refresh | Refrescar token | Sí |
-
-### Consultas
-| Método | Endpoint | Descripción | Rol |
-|--------|----------|-------------|-----|
-| GET | /api/v1/consultations/ | Listar consultas | Cualquiera |
-| POST | /api/v1/consultations/ | Crear consulta | doctor/admin |
-| GET | /api/v1/consultations/{id} | Obtener consulta | Cualquiera |
-| PATCH | /api/v1/consultations/{id}/start | Iniciar consulta | doctor |
-| PATCH | /api/v1/consultations/{id}/end | Finalizar consulta | doctor |
-| DELETE | /api/v1/consultations/{id} | Cancelar consulta | doctor/admin |
-
-### Grabaciones
-| Método | Endpoint | Descripción | Auth |
-|--------|----------|-------------|------|
-| POST | /api/v1/recordings/ | Subir grabación de audio | Sí |
-| GET | /api/v1/recordings/list-all | Listar todas las grabaciones | Sí |
-| GET | /api/v1/recordings/{consultation_id} | Listar grabaciones de una consulta | Sí |
-| GET | /api/v1/recordings/{consultation_id}/{file_name} | Descargar grabación | Sí |
-
-### IA / Transcripción / FHIR
-| Método | Endpoint | Descripción | Rol |
-|--------|----------|-------------|-----|
-| POST | /api/v1/ia/transcribe | Transcribir audio con Whisper | doctor/admin |
-| POST | /api/v1/ia/extract-fhir | Extraer entidades FHIR | doctor/admin |
-| GET | /api/v1/ia/fhir/{consultation_id} | Obtener bundle FHIR de consulta | Cualquiera |
-| GET | /api/v1/ia/transcriptions/{consultation_id} | Obtener transcripción | Cualquiera |
-| GET | /api/v1/ia/pending-review | Listar transcripciones pendientes | doctor |
-| POST | /api/v1/ia/{consultation_id}/review | Aprobar/rechazar transcripción | doctor |
-
-### Utilidades
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | /health | Estado del backend |
-| GET | / | Info del API |
-
----
-
-## Estado de Servicios
-
-| Servicio | Puerto | Estado | Notas |
-|----------|--------|--------|-------|
-| PostgreSQL | 5433 | ✅ Corriendo | Persistencia principal |
-| Redis | 6379 | ✅ Corriendo | Cache/colas |
-| MinIO | 9000-9001 | ✅ Corriendo | ⚠️ Fallback local activo |
-| Whisper | 9002 | ✅ Corriendo | Transcripción |
-| Caddy | 80/443 | ✅ Corriendo | Reverse proxy |
-| LiveKit | 7880 | ⏸️ Corriendo | No usado |
-| CoTURN | 3478 | ⏸️ Corriendo | No usado |
-| Backend FastAPI | 8000 | Manual | uvicorn |
-| Frontend Next.js | 3000 | Manual | npm run start |
-
----
-
-## Historial Completo de Cambios
-
-### 1. Diagnóstico y Fallo de LiveKit WebRTC
-
-**Problema inicial**: LiveKit fallaba con error "ICE failed, add a TURN server".
-
-**Causas identificadas**:
-- CoTURN no reachable desde el navegador (red Docker vs Windows)
-- ICE candidates siempre fallidos
-- Sin candidatos de tipo "relay" (TURN)
-- CoTURN tenía configuración incorrecta (`secret-key` en lugar de `static-auth-secret`)
-
-**Intentos de solución**:
-1. Corrección de turnserver.conf (`static-auth-secret`, `max-allocate-lifetime`, `channel-lifetime`)
-2. Cambio de ICE servers a DNS interno de Docker (`turn:coturn:3478`)
-3. Agregado servidor TURN público (`openrelay.metered.ca:443`)
-4. Ninguno funcionó por incompatibilidad de red Docker/Windows
-
-### 2. Intento con Jitsi Meet (Descartado)
-
-**Problema**: Los servicios públicos de Jitsi (`meet.jit.si`, `8x8.vc`) requieren login de Google/GitHub.
-
-**Intentos**:
-1. Iframe embebido → error de cookies de terceros
-2. API externa (`external_api.js`) → error de parseo de JSON
-3. Ventana nueva (`window.open`) → solicita verificación de cuenta Google
-4. Todos descartados
-
-### 3. Implementación de PeerJS (Solución Final)
-
-**Solución**: PeerJS - WebRTC peer-to-peer con servidor de señalización gratuito.
-
-**Ventajas**:
-- No requiere cuenta, API key, ni login
-- Conexión directa entre navegadores (P2P)
-- Sin problemas de cookies de terceros
-- Sin restricciones de iframe
-
-**Archivos**:
-- `frontend/src/components/video/VideoRoom.tsx` - Componente principal
-- `frontend/src/app/room/[roomName]/page.tsx` - Página de sala
-
-**Cómo funciona**:
-1. Peer ID: `telemedicina-{roomName}-{userIdentity}-{timestamp}`
-2. Descubrimiento vía `localStorage` con polling cada 3s
-3. Conexión P2P directa para video/audio
-
-### 4. Corrección de Roles en Autenticación
-
-**Problema**: Login siempre asignaba rol "patient" → Error 403 al crear consultas.
-
-**Solución**: Detección de rol por email en `backend/src/routers/auth.py`:
-- `doctor@test.com` → doctor
-- `admin@test.com` → admin
-- `patient@test.com` → patient
-
-### 5. Grabación de Audio
-
-**Frontend** (`VideoRoom.tsx`):
-- `MediaRecorder` con formato `audio/webm;codecs=opus`
-- Indicador rojo "Grabando" con cronómetro
-- Upload al backend al salir
-
-**Backend** (`recordings.py`):
-- Upload con fallback local si MinIO falla
-- Transcripción automática en hilo separado
-
-### 6. Transcripción con Whisper Docker
-
-**Problema anterior**: whispercpp incompatible con Python 3.13.
-
-**Solución**: Contenedor `onerahmet/openai-whisper-asr-webservice`.
-
-**Flujo**:
-1. Frontend sube audio webm
-2. Backend convierte a WAV con ffmpeg (16kHz, mono)
-3. Envía a Whisper vía HTTP POST
-4. Guarda transcripción en DB + archivo JSON
-
-### 7. Extracción FHIR Completa
-
-**Diccionarios médicos**:
-- **SNOMED CT**: 25+ síntomas/condiciones (cefalea, fiebre, tos, dolor abdominal, etc.)
-- **RxNorm**: 20+ medicamentos (ibuprofeno, paracetamol, amoxicilina, etc.)
-- **LOINC**: 11 signos vitales (presión arterial, frecuencia cardíaca, temperatura, etc.)
-- **SNOMED Procedures**: 14 procedimientos (vacunación, electrocardiograma, etc.)
-
-**Tipos de recursos FHIR generados**:
-- `Encounter` - Consulta virtual
-- `Condition` - Diagnósticos con código SNOMED
-- `MedicationRequest` - Medicamentos con código RxNorm y dosis
-- `Observation` - Signos vitales con código LOINC y valores
-- `Procedure` - Procedimientos con código SNOMED
-
-**Validación**: Cada bundle se valida contra reglas FHIR básicas.
-
-### 8. Persistencia en PostgreSQL
-
-**Modelos** (`backend/src/models/consultation.py`):
-- `Consultation` - id, patient_id, practitioner_id, room_name, status, scheduled_at, started_at, ended_at, duration_minutes, notes
-- `Transcription` - consultation_id (FK), transcription_text, language, segments, fhir_bundle, fhir_entities, fhir_valid, reviewed, approved, corrections
-- `Recording` - consultation_id (FK), file_name, file_path, file_size, duration_seconds, storage_type
-
-**Seed script** (`backend/scripts/seed_db.py`):
-- Importa datos existentes de archivos JSON a PostgreSQL
-- Crea tablas automáticamente al iniciar el backend
-
-### 9. Frontend FHIR
-
-**Página `/fhir`**:
-- Busca por ID de consulta
-- Muestra entidades por categoría con colores:
-  - 🔴 Diagnósticos (Condition)
-  - 🔵 Medicamentos (MedicationRequest)
-  - 🟢 Signos Vitales (Observation)
-  - 🟣 Procedimientos (Procedure)
-- Cada entidad muestra nombre, código y sistema de codificación
-
----
-
-## Cómo Iniciar los Servicios
-
-### 1. Verificar Docker
-```powershell
-docker ps
 ```
-
-### 2. Forzar reinicio del backend
-```powershell
-Get-NetTCPConnection -LocalPort 8000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
-
-### 3. Iniciar Backend
-```powershell
-cd D:\hipocrates\backend
-python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-### 4. Construir e iniciar Frontend
-```powershell
-cd D:\hipocrates\frontend
-npm run build
-npm run start
-```
-
-### 5. Seed Database (si es necesario)
-```powershell
-cd D:\hipocrates\backend
-python scripts/seed_db.py
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USUARIO                                         │
+│                    (Médico o Paciente)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FRONTEND (Next.js 14)                              │
+│                        Puerto: 3000 (HTTP)                                   │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │    Login     │  │ Consultas    │  │ Grabaciones  │  │   Dashboard  │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    │        API REST (FastAPI)      │
+                    │         Puerto: 8000          │
+                    └───────────────┬───────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        │                           │                           │
+        ▼                           ▼                           ▼
+┌───────────────┐         ┌───────────────┐         ┌───────────────────────┐
+│  PostgreSQL   │         │    Redis      │         │       MinIO           │
+│ Puerto: 5433  │         │ Puerto: 6379  │         │ Puerto: 9000-9001    │
+│ (Relacional)  │         │   (Cache)     │         │   (Almacenamiento)    │
+└───────────────┘         └───────────────┘         └───────────────────────┘
+        │                                                   │
+        │                                                   ▼
+        │                                       ┌───────────────────────┐
+        │                                       │   Whisper Docker      │
+        │                                       │   Puerto: 9002→9000   │
+        │                                       │   (Transcripción IA)  │
+        │                                       └───────────────────────┘
+        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                         DATOS CLÍNICOS FHIR                                   │
+│         Condiciones │ Medicamentos │ Observaciones │ Procedimientos            │
+│         SNOMED CT   │   RxNorm    │    LOINC     │    SNOMED               │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Flujo de Prueba Completo
+## 2. FLUJO DE PROCESO
 
-1. Abrir http://localhost:3000
-2. Login: `doctor@test.com` / `password123`
-3. Ir a "Nueva Consulta" → seleccionar paciente y fecha → crear
-4. Ir a "Mis Consultas" → click "Unirse" en una consulta
-5. Ingresar nombre e identidad → "Unirse a la consulta"
-6. Se inicia la videollamada con PeerJS + grabación automática
-7. Abrir otra pestaña, entrar como `patient@test.com` a la misma consulta
-8. Al finalizar, click "Salir" → grabación se sube + transcripción automática
-9. Ver grabaciones en `/recordings`
-10. Ver transcripciones en `/transcriptions` (aprobar/rechazar)
-11. Ver entidades FHIR en `/fhir` (ingresar ID de consulta)
+### 2.1 Flujo Completo de una Videoconsulta
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        ETAPA 1: AUTENTICACIÓN                              │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Usuario                    Frontend                    Backend
+     │                          │                          │
+     │─── Login (email/pass) ──▶│                          │
+     │                          │─── POST /auth/login ────▶│
+     │                          │                          │──▶ Validar credenciales
+     │                          │                          │──▶ Generar JWT (15 min)
+     │                          │◀── Token + Refresh ─────│
+     │◀── Dashboard ────────────│                          │
+     │                          │                          │
+
+  📍 DATOS: Credenciales validadas en memoria (no persistidas)
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     ETAPA 2: INICIO DE CONSULTA                            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Médico                     Frontend                    Backend
+     │                          │                          │
+     │─── Crear consulta ──────▶│                          │
+     │                          │─── POST /consultations ─▶│
+     │                          │                          │──▶ Crear Room ID
+     │                          │                          │──▶ Guardar en PostgreSQL
+     │◀── Room ID ─────────────│◀── Consultation ─────────│
+     │                          │                          │
+     │─── Unirse al room ──────▶│                          │
+     │                          │─── GET /consultations ──▶│
+     │◀── Video Room ──────────│◀── Lista ────────────────│
+
+  📍 DATOS: consultation_id, patient_id, doctor_id, status, timestamps
+     📦 TABLA: consultations (PostgreSQL)
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   ETAPA 3: VIDEOCONSULTA P2P (PeerJS)                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Paciente                   PeerJS                       Médico
+     │                          │                          │
+     │─── Iniciar Peer ────────▶│                          │
+     │                          │◀── Peer ID ──────────────│
+     │◀── Compartir Peer ID ────┤                          │
+     │                          │                          │─── Conectar P2P ────┤
+     │◀────────────────────────────────── Stream Video ────▶│
+     │◀────────────────────────────────── Stream Video ────▶│
+
+  📍 DATOS: Streams de audio/video en memoria (no persistidos)
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     ETAPA 4: GRABACIÓN DE AUDIO                           │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Navegador                   Frontend                    MinIO
+     │                          │                          │
+     │─── MediaRecorder.start ──▶│                          │
+     │◀── Blob chunks ──────────││                          │
+     │                          │                          │
+     │─── Detener grab. ───────▶│                          │
+     │─── Enviar .webm ────────▶│                          │
+     │                          │─── POST /recordings ────▶│
+     │                          │                          │──▶ Guardar en bucket
+     │                          │                          │
+     │                          │◀── 201 Created ──────────│
+     │                          │                          │
+
+  📍 DATOS: Audio .webm
+     📦 ALMACENAMIENTO: MinIO (bucket: telemedicina-recordings)
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    ETAPA 5: TRANSCRIPCIÓN (Whisper)                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Backend                     Whisper Docker              PostgreSQL
+     │                          │                          │
+     │─── Leer .webm ──────────▶│                          │
+     │                          │─── Convertir a WAV ──────│
+     │                          │─── POST /asr ───────────▶│
+     │                          │◀── Texto transcrito ─────│
+     │                          │                          │
+     │─── Guardar transcripción ───────────────────────────▶│
+     │                          │                          │──▶ INSERT transcriptions
+
+  📍 DATOS: transcription_text, language, segments
+     📦 TABLA: transcriptions (PostgreSQL)
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   ETAPA 6: EXTRACCIÓN FHIR                                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Backend                     FHIR Mapper                 Terminología
+     │                          │                          │
+     │─── Extraer entidades ────▶│                          │
+     │                          │─── Analizar texto ───────│
+     │                          │                          │
+     │                          │─── Búsqueda SNOMED ──────▶│ (médicamentos, síntomas)
+     │                          │─── Búsqueda RxNorm ─────▶│ (medicamentos)
+     │                          │─── Búsqueda LOINC ──────▶│ (observaciones)
+     │                          │                          │
+     │─── Crear FHIR Bundle ───▶│                          │
+     │                          │──▶ Condition (SNOMED CT)  │
+     │                          │──▶ MedicationStatement    │
+     │                          │──▶ Observation (LOINC)   │
+     │                          │──▶ Procedure (SNOMED)    │
+     │                          │                          │
+     │─── Guardar Bundle ────────────────────────────────▶│
+     │                          │                          │──▶ UPDATE transcriptions
+
+  📍 DATOS: FHIR Bundle JSON con recursos codificados
+     📦 TABLA: transcriptions.fhir_bundle, transcriptions.fhir_entities
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     ETAPA 7: VISUALIZACIÓN FHIR                           │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Médico                     Frontend                    Backend
+     │                          │                          │
+     │─── Ver transcripción ────▶│                          │
+     │                          │─── GET /transcriptions ──▶│
+     │                          │◀── Transcripción + FHIR ─│
+     │◀── Mostrar entidades ────│                          │
+     │                          │                          │
+     │─── Revisar/corrección ──▶│                          │
+     │                          │─── PATCH /transcriptions ─▶│
+     │                          │                          │──▶ UPDATE reviewed=true
+     │                          │                          │──▶ Guardar correcciones
+
+  📍 DATOS: Correcciones del médico
+     📦 TABLA: transcriptions.reviewed, transcriptions.corrections
+```
 
 ---
 
-## Estructura Completa de Archivos
+## 3. APLICACIONES Y SERVICIOS
 
-### Frontend
-```
-frontend/src/
-├── app/
-│   ├── api/
-│   │   └── consultations/[roomName]/peers/route.ts  # Peer discovery API
-│   ├── auth/
-│   │   ├── signin/page.tsx       # Login con NextAuth
-│   │   └── error/page.tsx        # Página de error auth
-│   ├── consultations/
-│   │   ├── page.tsx              # Lista de consultas + botones navegación
-│   │   └── new/page.tsx          # Formulario crear consulta
-│   ├── dashboard/page.tsx        # Dashboard
-│   ├── fhir/page.tsx             # NUEVO - Visualización FHIR
-│   ├── recordings/page.tsx       # Lista/descarga grabaciones
-│   ├── room/[roomName]/page.tsx  # Sala de videollamada
-│   ├── transcriptions/page.tsx   # Lista/revisión transcripciones
-│   ├── layout.tsx                # Root layout
-│   ├── page.tsx                  # Home
-│   ├── providers.tsx             # Session provider
-│   └── globals.css
-├── components/
-│   ├── ai/
-│   │   └── ReviewDashboard.tsx   # Dashboard revisión IA
-│   ├── consultation/             # Componentes de consulta
-│   ├── layout/
-│   │   └── Header.tsx            # Header con navegación
-│   ├── ui/
-│   │   ├── Button.tsx            # Botón reutilizable
-│   │   ├── Card.tsx              # Card reutilizable
-│   │   └── Input.tsx             # Input reutilizable
-│   └── video/
-│       ├── VideoRoom.tsx         # PeerJS + grabación + transcripción
-│       ├── Controls.tsx          # Controles (mic, cámara, salir)
-│       ├── ParticipantTile.tsx   # Tile de participante
-│       └── JitsiRoom.tsx         # Legacy (no usado)
-├── hooks/
-│   ├── useAuth.tsx               # Hook autenticación
-│   ├── useJitsi.ts               # Legacy (no usado)
-│   └── useLiveKit.ts             # Legacy (no usado)
-├── lib/
-│   ├── auth.ts                   # NextAuth config
-│   ├── api.ts                    # Cliente API
-│   └── fetchApi.ts               # Fetch wrapper
-└── types/
-    └── next-auth.d.ts            # Tipos NextAuth
+### 3.1 Servicios Docker
+
+| Servicio | Imagen | Puerto | Descripción | Dependencias |
+|----------|--------|--------|-------------|---------------|
+| **frontend** | hipocrates-frontend | 3000 | Next.js 14 App Router | backend (API) |
+| **backend** | hipocrates-backend | 8000 | FastAPI REST API | postgres, redis, minio, whisper |
+| **postgres** | postgres:15-alpine | 5433→5432 | Base de datos relacional | - |
+| **redis** | redis:7-alpine | 6379 | Cache de sesiones | - |
+| **minio** | minio/minio:latest | 9000-9001 | Object storage (S3 compatible) | - |
+| **whisper** | onerahmet/openai-whisper-asr-webservice | 9002→9000 | Whisper API REST | - |
+
+### 3.2 Tecnologías por Capa
+
+**Frontend (Presentacion)**
+- Next.js 14 (App Router)
+- React 18
+- TailwindCSS
+- Heroicons
+- PeerJS (WebRTC P2P)
+- MediaRecorder API
+
+**Backend (Lógica de Negocio)**
+- FastAPI (Python 3.13)
+- SQLAlchemy 2.0 (ORM)
+- Pydantic v2 (Validación)
+- python-jose (JWT)
+- bcrypt (Contraseñas)
+
+**Inteligencia Artificial**
+- Whisper (OpenAI) - Transcripción
+- FHIR Mapper - Extracción de entidades médicas
+- Terminologías: SNOMED CT, RxNorm, LOINC
+
+**Almacenamiento**
+- PostgreSQL 15 - Datos estructurados
+- MinIO - Archivos binarios (audio, videos)
+- Redis - Cache de sesiones
+
+---
+
+## 4. ALMACENAMIENTO DE DATOS
+
+### 4.1 PostgreSQL - Datos Estructurados
+
+```sql
+-- Consultas médicas
+consultations (
+    id              VARCHAR PRIMARY KEY,
+    room_name       VARCHAR UNIQUE,
+    patient_id      VARCHAR,
+    doctor_id       VARCHAR,
+    patient_name    VARCHAR,
+    reason          TEXT,
+    status          VARCHAR,  -- 'scheduled', 'in_progress', 'completed'
+    started_at      TIMESTAMP,
+    ended_at        TIMESTAMP,
+    created_by      VARCHAR,
+    created_at      TIMESTAMP
+)
+
+-- Grabaciones de audio
+recordings (
+    id              VARCHAR PRIMARY KEY,
+    consultation_id VARCHAR REFERENCES consultations(id),
+    file_name       VARCHAR,
+    file_path       VARCHAR,  -- Ruta en MinIO o local
+    file_size       INTEGER,
+    duration_seconds INTEGER,
+    storage_type    VARCHAR,  -- 'minio' o 'local'
+    created_by      VARCHAR,
+    created_at      TIMESTAMP
+)
+
+-- Transcripciones y FHIR
+transcriptions (
+    id                VARCHAR PRIMARY KEY,
+    consultation_id   VARCHAR REFERENCES consultations(id) UNIQUE,
+    transcription_text TEXT,
+    language          VARCHAR,
+    segments          TEXT,  -- JSON con segmentos
+    fhir_bundle       TEXT,  -- JSON FHIR Bundle
+    fhir_entities     TEXT,  -- JSON entidades extraídas
+    fhir_valid        BOOLEAN,
+    reviewed          BOOLEAN,
+    approved          BOOLEAN,
+    corrections       TEXT,  -- Correcciones del médico
+    reviewed_by       VARCHAR,
+    reviewed_at       TIMESTAMP,
+    created_by        VARCHAR,
+    created_at        TIMESTAMP,
+    updated_at        TIMESTAMP
+)
 ```
 
-### Backend
+### 4.2 MinIO - Archivos Binarios
+
 ```
-backend/
-├── src/
-│   ├── main.py                   # FastAPI app + CORS + lifespan (create tables)
-│   ├── core/
-│   │   ├── config.py             # Settings (DB, MinIO, JWT, Whisper)
-│   │   └── security.py           # JWT, require_role, get_current_user
-│   ├── models/
-│   │   ├── database.py           # SQLAlchemy engine, session, Base
-│   │   ├── user.py               # Modelo User
-│   │   └── consultation.py       # Consultation, Transcription, Recording
-│   ├── routers/
-│   │   ├── auth.py               # Login con detección de rol
-│   │   ├── consultations.py      # CRUD consultas (PostgreSQL)
-│   │   ├── recordings.py         # Upload + transcripción auto + DB
-│   │   ├── ia.py                 # Transcripción, FHIR, review
-│   │   ├── livekit.py            # Legacy (no usado)
-│   │   ├── fhir.py               # FHIR endpoints
-│   │   └── webhooks.py           # Webhooks
-│   ├── services/
-│   │   ├── minio_client.py       # Cliente MinIO (lazy loading)
-│   │   ├── whisper_transcriber.py # Transcripción vía Docker
-│   │   ├── fhir_mapper.py        # Mapeo a FHIR (SNOMED, RxNorm, LOINC)
-│   │   └── livekit_client.py     # Legacy (no usado)
-│   ├── middleware/                # Auditoría HIPAA
-│   ├── models/                    # Modelos Pydantic
-│   └── queue/                     # Colas Redis
-├── recordings/                    # Grabaciones locales (fallback)
-│   └── {consultation_id}/
-│       └── {uuid}_{filename}.webm
-├── transcriptions/                # Transcripciones JSON (backup)
-│   └── {consultation_id}.json
-├── scripts/
-│   ├── seed_db.py                # Seed database desde JSON existentes
-│   └── test_livekit_token.py     # Test token LiveKit
-├── tests/                         # Tests unitarios
-└── requirements.txt
+Bucket: telemedicina-recordings
+└── {consultation_id}/
+    ├── {uuid}_consulta_{consultation_id}.webm    -- Grabación original
+    ├── {uuid}_consulta_{consultation_id}.wav     -- Audio convertido
+    └── thumbnails/                                -- (futuro)
 ```
 
-### Docker
+### 4.3 Redis - Cache
+
 ```
-docker-compose.yml                 # PostgreSQL, Redis, MinIO, Whisper, Caddy, LiveKit, CoTURN
-turnserver.conf                    # CoTURN (corregido)
-.env                               # Variables de entorno
+Key: session:{user_id}
+Value: JWT tokens, datos de sesión
+TTL: 3600 segundos (1 hora)
+
+Key: whisper:task:{consultation_id}
+Value: Estado de transcripción
+TTL: 3600 segundos
+```
+
+### 4.4 Resumen de Almacenamiento por Etapa
+
+| Etapa | Tipo de Dato | Almacenamiento | Formato |
+|-------|--------------|----------------|---------|
+| Autenticación | Credenciales | Backend (memoria) | JWT |
+| Consulta | Metadatos | PostgreSQL | JSON |
+| Video | Streams | Memoria (P2P) | WebRTC |
+| Grabación | Audio | MinIO | .webm |
+| Transcripción | Texto | PostgreSQL | JSON |
+| FHIR | Clínico | PostgreSQL | FHIR R4 JSON |
+| Cache | Sesiones | Redis | Key-Value |
+
+---
+
+## 5. ENDPOINTS DE LA API
+
+### 5.1 Autenticación
+```
+POST /api/v1/auth/login      - Login (username/password → JWT)
+POST /api/v1/auth/register   - Registro de usuarios
+POST /api/v1/auth/refresh    - Refrescar token
+POST /api/v1/auth/logout     - Cerrar sesión
+GET  /api/v1/auth/me         - Usuario actual
+```
+
+### 5.2 Consultas
+```
+GET  /api/v1/consultations/           - Lista de consultas
+POST /api/v1/consultations/           - Crear consulta
+GET  /api/v1/consultations/{id}       - Detalle de consulta
+PUT  /api/v1/consultations/{id}       - Actualizar consulta
+DELETE /api/v1/consultations/{id}      - Eliminar consulta
+```
+
+### 5.3 Grabaciones
+```
+POST /api/v1/recordings/              - Subir grabación
+GET  /api/v1/recordings/list-all      - Lista todas las grabaciones
+GET  /api/v1/recordings/{consultation_id} - Grabaciones por consulta
+GET  /api/v1/recordings/{consultation_id}/{filename} - Descargar
+DELETE /api/v1/recordings/{id}        - Eliminar grabación
+```
+
+### 5.4 Transcripción y FHIR
+```
+GET  /api/v1/ia/transcriptions/{consultation_id} - Transcripción + FHIR
+POST /api/v1/ia/transcribe/{consultation_id}     - Re-transcribir
+GET  /api/v1/ia/fhir/{consultation_id}           - Solo FHIR Bundle
+PUT  /api/v1/ia/transcriptions/{id}/review       - Revisar/corrección
 ```
 
 ---
 
-## Notas Técnicas
+## 6. CONFIGURACIÓN DE REDES
 
-### PeerJS
-- Servidor de señalización público (sin configuración)
-- Conexión P2P directa (sin servidor de medios)
-- Descubrimiento: `localStorage` + polling 3s
-- IDs: `telemedicina-{roomName}-{userIdentity}-{timestamp}`
+### 6.1 Red Docker
+```
+Network: hipocrates_telemedicina (bridge)
+```
 
-### Grabación de Audio
-- `MediaRecorder` API del navegador
-- Formato: `audio/webm;codecs=opus` → `audio/webm` → `audio/ogg`
-- Se combina audio local + remoto en un solo stream
-- Upload al backend en el evento `onstop`
+### 6.2 Comunicación Interna
+```
+frontend  → backend:     http://telemedicina-backend:8000
+backend   → postgres:    postgresql://telemedicina-postgres:5432
+backend   → redis:       redis://telemedicina-redis:6379
+backend   → minio:       http://telemedicina-minio:9000
+backend   → whisper:     http://telemedicina-whisper:9000
+```
 
-### Transcripción (Whisper Docker)
-- Imagen: `onerahmet/openai-whisper-asr-webservice:latest`
-- Modelo: `base` (español)
-- Puerto: 9002 (externo) → 9000 (interno)
-- Backend convierte webm → wav con ffmpeg (16kHz, mono, pcm_s16le)
-- Envía audio vía HTTP POST a `http://whisper:9000/asr`
-- Transcripción en hilo separado (no bloquea respuesta)
-- Timeout: 300 segundos
-
-### Extracción FHIR
-- **SNOMED CT**: 25+ condiciones (cefalea, fiebre, tos, dolor abdominal, vacunación, etc.)
-- **RxNorm**: 20+ medicamentos (ibuprofeno, paracetamol, amoxicilina, metformina, etc.)
-- **LOINC**: 11 signos vitales (presión arterial, frecuencia cardíaca, temperatura, etc.)
-- **SNOMED Procedures**: 14 procedimientos (vacunación, electrocardiograma, ecografía, etc.)
-- Regex para extraer dosis de medicamentos
-- Regex para extraer valores de signos vitales
-- Validación FHIR básica (resourceType, required fields)
-
-### Base de Datos (PostgreSQL)
-- **Tablas**: consultations, transcriptions, recordings
-- **Relaciones**: Transcription 1:1 con Consultation, Recording N:1 con Consultation
-- **Creación automática**: `Base.metadata.create_all()` en lifespan del backend
-- **Seed script**: Importa datos de JSON existentes a PostgreSQL
-
-### Autenticación
-- NextAuth con estrategia JWT
-- Token expira en 15 minutos
-- Roles detectados por email en backend
-- `session.accessToken` = JWT del backend
-
-### MinIO
-- Bucket `recordings` creado manualmente
-- Acceso web: http://localhost:9000
-- ⚠️ SignatureDoesNotMatch - las grabaciones se guardan en disco local como fallback
+### 6.3 Exposición Externa
+```
+localhost:3000  → frontend  (HTTP)
+localhost:8000  → backend   (HTTP)
+localhost:5433  → postgres  (PostgreSQL)
+localhost:6379  → redis     (Redis CLI)
+localhost:9000  → minio     (API S3)
+localhost:9001  → minio     (Console)
+localhost:9002  → whisper   (ASR API)
+```
 
 ---
 
-## Pendientes
+## 7. VARIABLES DE ENTORNO
 
-1. **MinIO SignatureDoesNotMatch** - Corregir credenciales para almacenamiento S3
-2. **Mejorar calidad de transcripción** - Usar modelo `medium` o `large` de Whisper
-3. **Dashboard médico del paciente** - Historial consolidado de consultas
-4. **Generar reporte PDF** - Exportar consulta completa como documento clínico
-5. **Notificaciones** - Alertar al paciente cuando el doctor inicia la consulta
-6. **Persistencia de usuarios** - Guardar usuarios en PostgreSQL en vez de hardcodeados
+### Backend (.env)
+```env
+DATABASE_URL=postgresql+psycopg://telemedicina:password@postgres:5432/telemedicina
+REDIS_URL=redis://redis:6379
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=password
+MINIO_BUCKET_NAME=telemedicina-recordings
+WHISPER_SERVER_URL=http://whisper:9000/asr
+SECRET_KEY=jwt-secret-key-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+```
+
+### Frontend (.env.local)
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3000
+INTERNAL_API_URL=http://telemedicina-backend:8000
+NEXTAUTH_SECRET=nextauth-secret-change-in-production
+NEXTAUTH_URL=http://localhost:3000
+```
 
 ---
 
-## Problemas Conocidos
+## 8. INSTALACIÓN Y DESPLIEGUE
 
-1. **MinIO SignatureDoesNotMatch** - Credenciales no coinciden, fallback a disco local funciona
-2. **LiveKit y CoTURN** corren en Docker pero no se usan
-3. **Servicio Jitsi local** en docker-compose no configurado
-4. **Se requiere internet** para PeerJS (señalización) y Whisper (contenedor Docker)
-5. **Calidad de transcripción** - Modelo `base` puede distorsionar nombres de medicamentos
+### 8.1 Requisitos
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- Puerto 3000, 8000, 5433, 6379, 9000-9002 disponibles
+
+### 8.2 Despliegue Rápido
+```bash
+# Clonar repositorio
+git clone https://github.com/servinfcolombia/telemedicina-livekit.git
+cd telemedicina-livekit
+
+# Configurar variables de entorno
+cp .env.example .env
+# Editar .env según sea necesario
+
+# Iniciar todos los servicios
+docker compose up -d --build
+
+# Verificar estado
+docker compose ps
+```
+
+### 8.3 Verificación Post-Instalación
+```bash
+# Estado de servicios
+docker compose ps
+
+# Logs del backend
+docker compose logs -f backend
+
+# Prueba de login
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=doctor@test.com&password=password123"
+```
 
 ---
 
-*Actualizado: 03/04/2026*
+## 9. CREDENCIALES DEFAULT
+
+| Servicio | Usuario | Contraseña | URL |
+|----------|---------|------------|-----|
+| Frontend | doctor@test.com | password123 | http://localhost:3000 |
+| Frontend | admin@test.com | password123 | http://localhost:3000 |
+| Frontend | patient@test.com | password123 | http://localhost:3000 |
+| PostgreSQL | telemedicina | (generado) | localhost:5433 |
+| MinIO Console | minioadmin | (generado) | http://localhost:9001 |
+
+---
+
+## 10. ESTRUCTURA DE ARCHIVOS
+
+```
+hipocrates/
+├── backend/
+│   ├── src/
+│   │   ├── routers/           # Endpoints API
+│   │   │   ├── auth.py
+│   │   │   ├── consultations.py
+│   │   │   ├── recordings.py
+│   │   │   └── ia.py
+│   │   ├── services/         # Lógica de negocio
+│   │   │   ├── whisper_transcriber.py
+│   │   │   ├── fhir_mapper.py
+│   │   │   └── minio_client.py
+│   │   ├── models/           # ORM
+│   │   │   ├── consultation.py
+│   │   │   └── database.py
+│   │   ├── core/
+│   │   │   ├── config.py
+│   │   │   └── security.py
+│   │   └── main.py           # FastAPI app
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── app/              # Next.js App Router
+│   │   │   ├── consultations/
+│   │   │   ├── recordings/
+│   │   │   ├── transcriptions/
+│   │   │   ├── fhir/
+│   │   │   ├── room/[roomName]/
+│   │   │   └── auth/signin/
+│   │   ├── components/
+│   │   │   └── video/VideoRoom.tsx
+│   │   └── lib/
+│   │       └── auth.ts
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml
+├── .env
+├── CONTEXTO.md
+└── README.md
+```
+
+---
+
+## 11. GLOSARIO
+
+| Término | Descripción |
+|---------|-------------|
+| **FHIR** | Fast Healthcare Interoperability Resources - Estándar para intercambio de información clínica |
+| **SNOMED CT** | Systematized Nomenclature of Medicine - Terminología clínica global |
+| **RxNorm** | Normalized naming system for drugs - Terminología de medicamentos |
+| **LOINC** | Logical Observation Identifiers Names and Codes - Terminología de observaciones |
+| **PeerJS** | Biblioteca JavaScript para WebRTC P2P simplificado |
+| **MinIO** | Object storage compatible con S3 API |
+| **Whisper** | Modelo de OpenAI para transcripción de audio a texto |
+
+---
+
+## 12. CONTACTO Y SOPORTE
+
+- **Repositorio**: https://github.com/servinfcolombia/telemedicina-livekit
+- **Documentación API**: http://localhost:8000/docs (Swagger UI)
+- **MinIO Console**: http://localhost:9001

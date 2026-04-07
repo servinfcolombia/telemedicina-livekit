@@ -80,7 +80,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://telemedicina:6cc4fe60b2f494cb8ebc2b23300942b4@postgres:5432/telemedicina
+      - DATABASE_URL=postgresql+psycopg://telemedicina:6cc4fe60b2f494cb8ebc2b23300942b4@postgres:5432/telemedicina
       - SECRET_KEY=${SECRET_KEY:-aad09369a1e0044e016600fd61d83fb16bd60ba1d63050ba2a3a7a1b2e4364d8}
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
@@ -112,6 +112,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - INTERNAL_API_URL=http://telemedicina-backend:8000
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-aad09369a1e0044e016600fd61d83fb16bd60ba1d63050ba2a3a7a1b2e4364d8}
       - NEXTAUTH_URL=http://localhost:3000
     restart: unless-stopped

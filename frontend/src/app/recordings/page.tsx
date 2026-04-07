@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { TrashIcon, DownloadIcon } from '@heroicons/react/outline'
 
 interface Recording {
   id: string
@@ -19,6 +20,7 @@ export default function RecordingsPage() {
   const router = useRouter()
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -60,6 +62,34 @@ export default function RecordingsPage() {
       `${process.env.NEXT_PUBLIC_API_URL}/api/v1/recordings/${consultationId}/${fileName}`,
       '_blank'
     )
+  }
+
+  const deleteRecording = async (recordingId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta grabación?')) return
+    
+    setDeletingId(recordingId)
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/recordings/${recordingId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${(session as any)?.accessToken}`,
+          },
+        }
+      )
+      if (res.ok) {
+        setRecordings(recordings.filter(r => r.id !== recordingId))
+      } else {
+        console.error('Error deleting:', await res.text())
+        alert('Error al eliminar la grabación')
+      }
+    } catch (error) {
+      console.error('Error deleting recording:', error)
+      alert('Error al eliminar la grabación')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -132,9 +162,18 @@ export default function RecordingsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
                       onClick={() => downloadRecording(recording.consultation_id, recording.file_name)}
-                      className="text-primary-600 hover:text-primary-900 font-medium"
+                      className="text-primary-600 hover:text-primary-900 p-2"
+                      title="Descargar"
                     >
-                      Descargar
+                      <DownloadIcon className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => deleteRecording(recording.id)}
+                      disabled={deletingId === recording.id}
+                      className="text-red-600 hover:text-red-900 p-2 disabled:opacity-50"
+                      title="Eliminar"
+                    >
+                      <TrashIcon className="h-5 w-5" />
                     </button>
                   </td>
                 </tr>

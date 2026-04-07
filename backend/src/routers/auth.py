@@ -59,6 +59,8 @@ async def register(user: UserCreate):
     return UserResponse(**user_data)
 
 
+DEFAULT_PASSWORD_HASH = "$2b$12$RRCVyr30.IL2Vu6S1bvODekmnOvWzgP1BRw/4gTjPNwA2xKMEtkru"
+
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if "doctor" in form_data.username.lower():
@@ -72,7 +74,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "id": "user_001",
         "email": form_data.username,
         "role": user_role,
-        "hashed_password": get_password_hash("password123"),
+        "hashed_password": DEFAULT_PASSWORD_HASH,
     }
     
     if not verify_password(form_data.password, user_data["hashed_password"]):
