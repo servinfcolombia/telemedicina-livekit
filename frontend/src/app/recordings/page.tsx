@@ -3,7 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { TrashIcon, DownloadIcon } from '@heroicons/react/outline'
+import { TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 
 interface Recording {
   id: string
@@ -165,7 +165,7 @@ export default function RecordingsPage() {
                       className="text-primary-600 hover:text-primary-900 p-2"
                       title="Descargar"
                     >
-                      <DownloadIcon className="h-5 w-5" />
+                      <ArrowDownTrayIcon className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => deleteRecording(recording.id)}

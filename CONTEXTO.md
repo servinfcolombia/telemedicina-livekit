@@ -2,6 +2,7 @@
 ## Plataforma de Telemedicina con Videoconsultas, Transcripción IA y Extracción FHIR
 
 **Última actualización**: 07/04/2026  
+**Última actualización módulo perfiles**: 07/04/2026  
 **Estado**: ✅ Producción  
 **Docker**: 6 servicios activos
 
@@ -21,7 +22,7 @@
 │                        Puerto: 3000 (HTTP)                                   │
 │                                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │    Login     │  │ Consultas    │  │ Grabaciones  │  │   Dashboard  │   │
+│  │    Login     │  │ Consultas    │  │ Grabaciones  │  │   Perfiles   │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -206,6 +207,63 @@
 
 ---
 
+## 2.5 MÓDULO DE GESTIÓN DE PERFILES
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    GESTIÓN DE USUARIOS Y PERFILES                        │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Administrador              Frontend                    Backend
+     │                          │                          │
+     │─── Ver lista usuarios ──▶│                          │
+     │                          │─── GET /users?role=... ──▶│
+     │                          │◀── Lista de usuarios ─────│
+     │◀── Tabla de usuarios ────│                          │
+     │                          │                          │
+     │─── Crear usuario ───────▶│                          │
+     │                          │─── POST /users/register ──▶│
+     │                          │                          │──▶ Validar email único
+     │                          │                          │──▶ Encriptar contraseña
+     │                          │                          │──▶ INSERT users
+     │                          │◀── Usuario creado ───────│
+     │                          │                          │
+     │─── Editar usuario ───────▶│                          │
+     │                          │─── PUT /users/{id} ──────▶│
+     │                          │                          │──▶ UPDATE users
+     │                          │◀── Usuario actualizado ────│
+     │                          │                          │
+     │─── Eliminar usuario ────▶│                          │
+     │                          │─── DELETE /users/{id} ──▶│
+     │                          │                          │──▶ DELETE users
+     │                          │◀── 204 No Content ───────│
+
+  📍 DATOS: Perfiles completos
+     📦 TABLA: users (PostgreSQL)
+
+───────────────────────────────────────────────────────────────────────────────
+
+  ROLES DISPONIBLES:
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │  médico              │ Profesional médico con especialidad              │
+  │  paciente            │ Paciente con historial médico                   │
+  │  enfermera_jefe      │ Supervisor/a de enfermería                      │
+  │  auxiliar_enfermeria │ Personal de apoyo en enfermería                 │
+  │  admin               │ Administrador del sistema                        │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  CAMPOS POR ROL:
+  ┌──────────────────┬────────────────────────────────────────────────────┐
+  │ Rol              │ Campos Específicos                                  │
+  ├──────────────────┼────────────────────────────────────────────────────┤
+  │ Médico           │ specialty (especialidad), license_number (licencia) │
+  │ Paciente         │ blood_type, allergies, medical_history, emergency_* │
+  │ Todos            │ document_type, document_number, phone, address      │
+  └──────────────────┴────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 3. APLICACIONES Y SERVICIOS
 
 ### 3.1 Servicios Docker
@@ -253,6 +311,33 @@
 ### 4.1 PostgreSQL - Datos Estructurados
 
 ```sql
+-- Usuarios y Perfiles
+users (
+    id              VARCHAR PRIMARY KEY,
+    email           VARCHAR UNIQUE,
+    hashed_password VARCHAR,
+    full_name       VARCHAR,
+    role            VARCHAR,  -- 'medico', 'paciente', 'enfermera_jefe', 'auxiliar_enfermeria', 'admin'
+    is_active       BOOLEAN,
+    is_verified     BOOLEAN,
+    phone           VARCHAR,
+    specialty       VARCHAR,   -- Para médicos
+    license_number  VARCHAR,   -- Para médicos
+    document_type   VARCHAR,   -- CC, CE, TI, RC, PAS
+    document_number VARCHAR,
+    birth_date      VARCHAR,
+    gender          VARCHAR,
+    address         TEXT,
+    emergency_contact VARCHAR,
+    emergency_phone VARCHAR,
+    blood_type      VARCHAR,
+    allergies       TEXT,
+    medical_history TEXT,
+    created_at      TIMESTAMP,
+    updated_at      TIMESTAMP,
+    last_login      TIMESTAMP
+)
+
 -- Consultas médicas
 consultations (
     id              VARCHAR PRIMARY KEY,
@@ -328,6 +413,7 @@ TTL: 3600 segundos
 
 | Etapa | Tipo de Dato | Almacenamiento | Formato |
 |-------|--------------|----------------|---------|
+| Usuarios | Perfiles | PostgreSQL | Tabla users |
 | Autenticación | Credenciales | Backend (memoria) | JWT |
 | Consulta | Metadatos | PostgreSQL | JSON |
 | Video | Streams | Memoria (P2P) | WebRTC |
@@ -349,7 +435,18 @@ POST /api/v1/auth/logout     - Cerrar sesión
 GET  /api/v1/auth/me         - Usuario actual
 ```
 
-### 5.2 Consultas
+### 5.2 Usuarios y Perfiles
+```
+GET  /api/v1/users/                    - Lista de usuarios (con filtros)
+POST /api/v1/users/register            - Crear usuario
+GET  /api/v1/users/{id}               - Detalle de usuario
+PUT  /api/v1/users/{id}               - Actualizar usuario
+DELETE /api/v1/users/{id}              - Eliminar usuario
+POST /api/v1/users/change-password     - Cambiar contraseña
+GET  /api/v1/users/me/profile         - Perfil del usuario actual
+```
+
+### 5.3 Consultas
 ```
 GET  /api/v1/consultations/           - Lista de consultas
 POST /api/v1/consultations/           - Crear consulta
@@ -358,7 +455,7 @@ PUT  /api/v1/consultations/{id}       - Actualizar consulta
 DELETE /api/v1/consultations/{id}      - Eliminar consulta
 ```
 
-### 5.3 Grabaciones
+### 5.4 Grabaciones
 ```
 POST /api/v1/recordings/              - Subir grabación
 GET  /api/v1/recordings/list-all      - Lista todas las grabaciones
@@ -367,7 +464,7 @@ GET  /api/v1/recordings/{consultation_id}/{filename} - Descargar
 DELETE /api/v1/recordings/{id}        - Eliminar grabación
 ```
 
-### 5.4 Transcripción y FHIR
+### 5.5 Transcripción y FHIR
 ```
 GET  /api/v1/ia/transcriptions/{consultation_id} - Transcripción + FHIR
 POST /api/v1/ia/transcribe/{consultation_id}     - Re-transcribir
@@ -492,6 +589,7 @@ hipocrates/
 │   ├── src/
 │   │   ├── routers/           # Endpoints API
 │   │   │   ├── auth.py
+│   │   │   ├── users.py       # CRUD de perfiles
 │   │   │   ├── consultations.py
 │   │   │   ├── recordings.py
 │   │   │   └── ia.py
@@ -500,6 +598,7 @@ hipocrates/
 │   │   │   ├── fhir_mapper.py
 │   │   │   └── minio_client.py
 │   │   ├── models/           # ORM
+│   │   │   ├── user.py        # Modelo de usuarios
 │   │   │   ├── consultation.py
 │   │   │   └── database.py
 │   │   ├── core/
@@ -511,6 +610,7 @@ hipocrates/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/              # Next.js App Router
+│   │   │   ├── profiles/     # Gestión de perfiles
 │   │   │   ├── consultations/
 │   │   │   ├── recordings/
 │   │   │   ├── transcriptions/
@@ -532,6 +632,16 @@ hipocrates/
 ---
 
 ## 11. GLOSARIO
+
+### Roles de Usuario
+
+| Rol | Descripción | Campos Especiales |
+|-----|-------------|------------------|
+| **Médico** | Profesional de la salud que realiza consultas | specialty, license_number |
+| **Paciente** | Usuario que recibe atención médica | medical_history, allergies, blood_type |
+| **Enfermera Jefe** | Supervisor/a de enfermería | - |
+| **Auxiliar de Enfermería** | Personal de apoyo en enfermería | - |
+| **Administrador** | Gestor del sistema | - |
 
 | Término | Descripción |
 |---------|-------------|

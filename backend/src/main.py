@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from src.core.config import settings
-from src.routers import auth, consultations, fhir, webhooks, ia, livekit, recordings
+from src.routers import auth, users, consultations, fhir, webhooks, ia, livekit, recordings
 from src.models.database import engine, Base
 
 
@@ -32,6 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(consultations.router, prefix="/api/v1/consultations", tags=["consultations"])
 app.include_router(fhir.router, prefix="/fhir", tags=["fhir"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
